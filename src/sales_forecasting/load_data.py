@@ -10,7 +10,7 @@ import kagglehub
 import pandas as pd
 
 # 1. 项目根目录
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 # 2. 加载 .env 中的环境变量（KAGGLE_API_TOKEN）
 load_dotenv()
