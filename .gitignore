@@ -42,6 +42,7 @@ temp/
 ############################
 .env
 .env.*
+!.env.example
 
 ############################
 # Data (do not commit datasets)
