@@ -1,17 +1,65 @@
-# Python
-__pycache__/
-*.pyc
-
-# Jupyter
-.ipynb_checkpoints/
-
-# Virtual env
-.venv/
-venv/
-
-# OS
+############################
+# OS / Editor
+############################
 .DS_Store
 Thumbs.db
+.vscode/
+.idea/
 
-# Env
+############################
+# Python
+############################
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+*.egg-info/
+dist/
+build/
+
+############################
+# Virtual environments
+############################
+.venv/
+venv/
+env/
+
+############################
+# Jupyter
+############################
+.ipynb_checkpoints/
+*.nbconvert.ipynb
+
+############################
+# Logs / temp
+############################
+*.log
+tmp/
+temp/
+
+############################
+# Environment variables
+############################
 .env
+.env.*
+
+############################
+# Data (do not commit datasets)
+# Keep folders via .gitkeep
+############################
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+############################
+# Model artifacts (optional but recommended)
+############################
+models/*
+!models/.gitkeep
+
+############################
+# Outputs (optional)
+############################
+outputs/*
+!outputs/.gitkeep
