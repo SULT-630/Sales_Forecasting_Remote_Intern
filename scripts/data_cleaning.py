@@ -159,7 +159,16 @@ def Dataset_missing_values(df: pd.DataFrame, target_col: str = "units_sold") -> 
     missing_summary.to_csv(missing_summary_path, index=True)
     print(f"\nSaved missing summary to: {missing_summary_path}")
 
-#
+# Repeated value detection and ratio
+def Dataset_repeated_values(df: pd.DataFrame, target_col: str = "units_sold") -> None:
+    print("\n" + "=" * 80)
+    print("4) Repeated Values detection and ratio")
+    print("=" * 80)
+
+    dup_row_count = df.duplicated().sum()
+    dup_row_ratio = dup_row_count / len(df)
+    print(f"Duplicated rows count: {dup_row_count}")
+    print(f"Duplicated rows ratio: {dup_row_ratio:.2%}")
 
     # # 4. 数值型统计汇总
     # print("\n" + "=" * 80)
@@ -239,6 +248,7 @@ def main():
     Dataset_shape(raw_df, target_col="units_sold")
     df_after_type_and_semantic = Dataset_type_transform(raw_df)
     Dataset_missing_values(df_after_type_and_semantic, target_col="units_sold")
+    Dataset_repeated_values(df_after_type_and_semantic, target_col="units_sold")
 
 
 if __name__ == "__main__":
