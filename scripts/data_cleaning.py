@@ -47,10 +47,6 @@ METRIC_DIR.mkdir(parents=True, exist_ok=True)
 
 # Shape and structure of the dataset
 def Dataset_shape(df: pd.DataFrame, target_col: str = "units_sold") -> None:
-    """
-    Run EDA 
-    Saves: missing_summary.csv, numeric_summary.csv, correlation_heatmap.png, target_hist.png
-    """
 
     print("\n" + "=" * 80)
     print("1) Shape and Strucutre")
@@ -67,13 +63,81 @@ def Dataset_shape(df: pd.DataFrame, target_col: str = "units_sold") -> None:
     for col, dtype in df.dtypes.items():
         print(f"{col:<25} {dtype}")
 
+# Type transformation and semantic checks
+def Dataset_type_transform(df: pd.DataFrame) -> pd.DataFrame:
+    print("\n" + "=" * 80)
+    print("2) Type transformation and semantic checks")
+    print("=" * 80)
+    cols_to_drop = []
+
+    for col, meta in COLUMN_METADATA.items():
+        if col not in df.columns:
+            print(f"Column '{col}' not found in df. Skipping type transformation.")
+            continue
+        
+        use_in_model = meta.get("use_in_model")
+
+        # 只在明确标注 False 时才 drop
+        if use_in_model is False:
+            cols_to_drop.append(col)
+            print(f"Dropping column '{col}' (use_in_model=False)")
+
+        expected_type = meta.get("dtype")
+        if expected_type is None:
+            print(f"Column '{col}' has no dtype in metadata. Skipping type transformation.")
+            continue
+
+        if expected_type == "category":
+            df[col] = df[col].astype("category")
+        elif expected_type == "datetime":
+            df[col] = pd.to_datetime(df[col], format="%y/%m/%d", errors="coerce")
+        elif expected_type == "int":
+            df[col] = pd.to_numeric(df[col], errors="coerce").astype("Int64")
+        elif expected_type == "float":
+            df[col] = pd.to_numeric(df[col], errors="coerce").astype("Float64")
+
+        # 语义检查
+        if "allowed_values" in meta:
+            allowed_values = meta["allowed_values"]
+            invalid_values = df[~df[col].isin(allowed_values)][col].unique()
+            if len(invalid_values) > 0:
+                print(f"Column '{col}' has invalid values: {invalid_values}")
+            else: print(f"Column '{col}' passed allowed values check.")
+
+    # 成交价格比基础价格高
+    mask1 = df["total_price"] > df["base_price"]
+    count = mask1.sum()
+    ratio = count / len(df)
+    print(f"Count if total price > base price: {count}")
+    print(f"Ratio if total price > base price: {ratio:.2%}")
+
+    # 折扣条件
+    discount_mask = df["total_price"] < df["base_price"]
+
+    # 新增是否折扣 SKU（0 / 1）
+    df["is_discount_sku"] = discount_mask.astype(int)
+
+    # 新增折扣力度（成交价 / 基础价）
+    df["discount_ratio"] = df["total_price"] / df["base_price"]
+
+    if cols_to_drop:
+        df = df.drop(columns=cols_to_drop)
+
+    print("\n--- head(5) ---")
+    print(df.head(5))
+    print("\n--- tail(5) ---")
+    print(df.tail(5))
+    print("\n--- dtypes ---")
+    for col, dtype in df.dtypes.items():
+        print(f"{col:<25} {dtype}")
+
+    return df
+
 # Missing values detection and ratio
 def Dataset_missing_values(df: pd.DataFrame, target_col: str = "units_sold") -> None:
-    """
-    Missing values detection and ratio
-    """
+
     print("\n" + "=" * 80)
-    print("2) Missing Values detection and ratio")
+    print("3) Missing Values detection and ratio")
     print("=" * 80)
 
     n_rows = len(df)
@@ -94,6 +158,8 @@ def Dataset_missing_values(df: pd.DataFrame, target_col: str = "units_sold") -> 
     missing_summary_path = METRIC_DIR / "missing_summary.csv"
     missing_summary.to_csv(missing_summary_path, index=True)
     print(f"\nSaved missing summary to: {missing_summary_path}")
+
+#
 
     # # 4. 数值型统计汇总
     # print("\n" + "=" * 80)
@@ -171,7 +237,8 @@ def main():
     raw_df = load_kaggle_dataset()
 
     Dataset_shape(raw_df, target_col="units_sold")
-    Dataset_missing_values(raw_df, target_col="units_sold")
+    df_after_type_and_semantic = Dataset_type_transform(raw_df)
+    Dataset_missing_values(df_after_type_and_semantic, target_col="units_sold")
 
 
 if __name__ == "__main__":
