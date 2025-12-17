@@ -35,6 +35,7 @@ from sales_forecasting.load_data import load_kaggle_dataset
 from sales_forecasting.schema import COLUMN_METADATA
 from sales_forecasting.load_data import clear_raw_csvs
 import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -134,7 +135,7 @@ def Dataset_type_transform(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 # Missing values detection and ratio
-def Dataset_missing_values(df: pd.DataFrame, target_col: str = "units_sold") -> None:
+def Dataset_missing_values(df: pd.DataFrame, target_col: str = "units_sold") -> pd.DataFrame:
 
     print("\n" + "=" * 80)
     print("3) Missing Values detection and ratio")
@@ -153,11 +154,16 @@ def Dataset_missing_values(df: pd.DataFrame, target_col: str = "units_sold") -> 
     else:
         print(missing_summary)
 
+    df_cleaned = df.dropna()
+    print(f"\nAfter dropping missing values, new shape: {df_cleaned.shape}")
+
     # 存储缺失值
     clear_raw_csvs(METRIC_DIR, patterns=["missing_summary.csv"])
     missing_summary_path = METRIC_DIR / "missing_summary.csv"
     missing_summary.to_csv(missing_summary_path, index=True)
     print(f"\nSaved missing summary to: {missing_summary_path}")
+
+    return df_cleaned
 
 # Repeated value detection and ratio
 def Dataset_repeated_values(df: pd.DataFrame, target_col: str = "units_sold") -> None:
@@ -170,22 +176,88 @@ def Dataset_repeated_values(df: pd.DataFrame, target_col: str = "units_sold") ->
     print(f"Duplicated rows count: {dup_row_count}")
     print(f"Duplicated rows ratio: {dup_row_ratio:.2%}")
 
-    # # 4. 数值型统计汇总
-    # print("\n" + "=" * 80)
-    # print("5) NUMERIC SUMMARY (describe)")
-    # print("=" * 80)
-    # numeric_cols = df.select_dtypes(include="number").columns
-    # if len(numeric_cols) == 0:
-    #     print("No numeric columns found.")
-    #     numeric_summary = pd.DataFrame()
-    # else:
-    #     numeric_summary = df[numeric_cols].describe().T
-    #     print(numeric_summary)
+# Univaraite analysis and visualizations
+def Dataset_univariate_analysis(df: pd.DataFrame, target_col: str = "units_sold") -> None:
+    print("\n" + "=" * 80)
+    print("5) Univaraite analysis and visualizations")
+    print("=" * 80)
 
-    # # 5. 存储数值型统计汇总
-    # numeric_summary_path = METRIC_DIR / "numeric_summary.csv"
-    # numeric_summary.to_csv(numeric_summary_path, index=True)
-    # print(f"\nSaved numeric summary to: {numeric_summary_path}")
+    print("\n--- 连续数值型分析 ---")
+    continuous_cols = list("total_price base_price discount_ratio".split())
+    cont = df[continuous_cols]
+    desc = cont.describe().T
+    print(desc)
+
+    scale_dispersion = pd.DataFrame(index=continuous_cols)
+
+    out = pd.DataFrame(index=continuous_cols)
+
+    # range
+    out["range"] = cont.max() - cont.min()
+
+    # IQR
+    q1 = cont.quantile(0.25)
+    q3 = cont.quantile(0.75)
+    out["IQR"] = q3 - q1
+
+    # CV = std / mean（注意：mean接近0会爆炸；可能为负时解释也会变怪）
+    mean = cont.mean()
+    std = cont.std(ddof=1)
+    eps = 1e-12
+    out["CV"] = (std / (mean.abs() + eps)).replace([np.inf, -np.inf], np.nan)
+
+    # CV经验分级（你可以按业务再调阈值）
+    # low: <=0.10  (相对稳定)
+    # medium: (0.10, 0.30]
+    # high: >0.30 (相对波动大)
+    out["CV_flag"] = pd.cut(
+        out["CV"],
+        bins=[-np.inf, 0.10, 0.30, np.inf],
+        labels=["low", "medium", "high"]
+    )
+
+    # rCV（robust CV）：用IQR替代std、用median替代mean
+    # 常见定义：rCV = (IQR / 1.349) / |median|
+    # 其中 1.349 让“正态分布下 IQR/1.349 ≈ std”
+    median = cont.median()
+    robust_std = out["IQR"] / 1.349
+    out["rCV"] = (robust_std / (median.abs() + eps)).replace([np.inf, -np.inf], np.nan)
+
+    # rCV经验分级（同样可调）
+    out["rCV_flag"] = pd.cut(
+        out["rCV"],
+        bins=[-np.inf, 0.10, 0.30, np.inf],
+        labels=["low", "medium", "high"]
+    )
+
+    print("\n连续数值型离散度指标:")
+    print(out) 
+
+    # 连续性分布绘图
+    price_cols = ["total_price", "base_price"]
+    for col in price_cols:
+        data = df[col].dropna()
+        plt.figure(figsize=(8, 5))
+
+        # 1) 直方图
+        plt.hist(data, bins=50, density=True, alpha=0.6)
+
+        # 2) KDE 曲线（pandas 自带）
+        data.plot(kind="kde")
+
+        plt.title(f"Distribution of {col}")
+        plt.xlabel(col)
+        plt.ylabel("Density")
+
+        plt.tight_layout()
+        cont_fig_path = FIG_DIR / f"{col}_distribution.png"
+        clear_raw_csvs(FIG_DIR, patterns=[f"{col}_distribution.png"])
+        plt.savefig(cont_fig_path, dpi=150, bbox_inches="tight")
+        plt.close()
+        print(f"Saved target histogram to: {cont_fig_path}")
+
+    # 保存图片
+   
 
     # # 6. 目标变量分布
     # print("\n" + "=" * 80)
@@ -247,8 +319,10 @@ def main():
 
     Dataset_shape(raw_df, target_col="units_sold")
     df_after_type_and_semantic = Dataset_type_transform(raw_df)
-    Dataset_missing_values(df_after_type_and_semantic, target_col="units_sold")
-    Dataset_repeated_values(df_after_type_and_semantic, target_col="units_sold")
+    df_after_missing = Dataset_missing_values(df_after_type_and_semantic, target_col="units_sold")
+    Dataset_repeated_values(df_after_missing, target_col="units_sold")
+
+    Dataset_univariate_analysis(df_after_missing, target_col="units_sold")
 
 
 if __name__ == "__main__":
