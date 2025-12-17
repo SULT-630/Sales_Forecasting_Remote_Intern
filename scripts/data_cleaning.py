@@ -33,6 +33,7 @@ Notes:
 from pathlib import Path
 from sales_forecasting.load_data import load_kaggle_dataset
 from sales_forecasting.schema import COLUMN_METADATA
+from sales_forecasting.load_data import clear_raw_csvs
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -54,6 +55,7 @@ def Dataset_shape(df: pd.DataFrame, target_col: str = "units_sold") -> None:
     print("\n" + "=" * 80)
     print("1) Shape and Strucutre")
     print("=" * 80)
+
     n_rows, n_cols = df.shape
     print(f"Rows: {n_rows:,}")
     print(f"Cols: {n_cols:,}")
@@ -66,66 +68,32 @@ def Dataset_shape(df: pd.DataFrame, target_col: str = "units_sold") -> None:
         print(f"{col:<25} {dtype}")
 
 # Missing values detection and ratio
-# def Dataset_missing_values(df: pd.DataFrame, target_col: str = "units_sold") -> None:
-#     """
-#     Missing values detection and ratio
-#     """
-#     print("\n" + "=" * 80)
-#     print("2) Missing Values detection and ratio")
-#     print("=" * 80)
+def Dataset_missing_values(df: pd.DataFrame, target_col: str = "units_sold") -> None:
+    """
+    Missing values detection and ratio
+    """
+    print("\n" + "=" * 80)
+    print("2) Missing Values detection and ratio")
+    print("=" * 80)
 
+    n_rows = len(df)
+    missing_cnt = df.isna().sum()
+    missing_pct = (missing_cnt / n_rows * 100).round(2)
+    missing_summary = (
+        pd.DataFrame({"missing_count": missing_cnt, "missing_pct": missing_pct})
+        .query("missing_count > 0")
+        .sort_values("missing_pct", ascending=False)
+    )
+    if missing_summary.empty:
+        print("No missing values found.")
+    else:
+        print(missing_summary)
 
-
-    # print("\n" + "=" * 80)
-    # print("2) HEAD / TAIL")
-    # print("=" * 80)
-    # print("\n--- head(5) ---")
-    # print(df.head(5))
-    # print("\n--- tail(5) ---")
-    # print(df.tail(5))
-
-    # print("\n" + "=" * 80)
-    # print("3) DTYPES")
-    # print("=" * 80)
-    # print(df.dtypes)
-
-    # # 1. 列对照
-    # print("\n" + "=" * 80)
-    # print("Schema quick check (columns in schema vs df)")
-    # print("=" * 80)
-    # schema_cols = set(COLUMN_METADATA.keys())
-    # df_cols = set(df.columns)
-    # missing_in_df = sorted(list(schema_cols - df_cols))
-    # extra_in_df = sorted(list(df_cols - schema_cols))
-    # if missing_in_df:
-    #     print("Missing columns in df (present in schema):", missing_in_df)
-    # else:
-    #     print("No missing columns relative to schema.")
-    # if extra_in_df:
-    #     print("Extra columns in df (not in schema):", extra_in_df)
-    # else:
-    #     print("No extra columns relative to schema.")
-
-    # # 2. 缺失值概览
-    # print("\n" + "=" * 80)
-    # print("4) MISSING VALUES OVERVIEW")
-    # print("=" * 80)
-    # miss_cnt = df.isna().sum()
-    # miss_pct = (miss_cnt / len(df) * 100).round(2)
-    # missing_summary = (
-    #     pd.DataFrame({"missing_count": miss_cnt, "missing_pct": miss_pct})
-    #     .query("missing_count > 0")
-    #     .sort_values("missing_pct", ascending=False)
-    # )
-    # if missing_summary.empty:
-    #     print("No missing values found.")
-    # else:
-    #     print(missing_summary)
-
-    # # 3. 存储缺失值
-    # missing_summary_path = METRIC_DIR / "missing_summary.csv"
-    # missing_summary.to_csv(missing_summary_path, index=True)
-    # print(f"\nSaved missing summary to: {missing_summary_path}")
+    # 存储缺失值
+    clear_raw_csvs(METRIC_DIR, patterns=["missing_summary.csv"])
+    missing_summary_path = METRIC_DIR / "missing_summary.csv"
+    missing_summary.to_csv(missing_summary_path, index=True)
+    print(f"\nSaved missing summary to: {missing_summary_path}")
 
     # # 4. 数值型统计汇总
     # print("\n" + "=" * 80)
@@ -203,6 +171,7 @@ def main():
     raw_df = load_kaggle_dataset()
 
     Dataset_shape(raw_df, target_col="units_sold")
+    Dataset_missing_values(raw_df, target_col="units_sold")
 
 
 if __name__ == "__main__":

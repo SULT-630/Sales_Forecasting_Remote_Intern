@@ -19,15 +19,16 @@ load_dotenv()
 RAW_DATA_DIR = PROJECT_ROOT / "data" / "raw"
 RAW_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-def clear_raw_csvs(raw_dir: Path) -> None:
+def clear_raw_csvs(raw_dir: Path, patterns: list[str], keep_files: list[str] | None = None) -> None:
     """
     clear out old CSV files in raw data directory
     """
-    patterns = ["train_*.csv", "test_*.csv", "sample_submission_*.csv"]
+    if keep_files is None:
+        keep_files = [".gitkeep"]
 
     for pat in patterns:
         for f in raw_dir.glob(pat):
-            if f.name == ".gitkeep":
+            if f.name in keep_files:
                 continue
             try:
                 f.unlink()  # 删除文件
@@ -41,7 +42,7 @@ def load_kaggle_dataset() -> pd.DataFrame:
     """
 
     # 清理旧的 CSV 文件
-    clear_raw_csvs(RAW_DATA_DIR)
+    clear_raw_csvs(RAW_DATA_DIR, patterns=["*.csv"])
     
     # 4. 下载数据集
     dataset_path = kagglehub.dataset_download(
