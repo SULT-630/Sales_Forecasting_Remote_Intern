@@ -229,11 +229,11 @@ def Dataset_univariate_analysis(df: pd.DataFrame, target_col: str = "units_sold"
         bins=[-np.inf, 0.10, 0.30, np.inf],
         labels=["low", "medium", "high"]
     )
-
-    print("\n连续数值型离散度指标:")
+    print("\n--- 连续数值型离散度指标 ---")
     print(out) 
 
     # 连续性分布绘图
+    print("\n--- 连续数值型直方图, KDE与箱图 ---")
     price_cols = ["total_price", "base_price"]
     for col in price_cols:
         data = df[col].dropna()
@@ -254,47 +254,139 @@ def Dataset_univariate_analysis(df: pd.DataFrame, target_col: str = "units_sold"
         clear_raw_csvs(FIG_DIR, patterns=[f"{col}_distribution.png"])
         plt.savefig(cont_fig_path, dpi=150, bbox_inches="tight")
         plt.close()
-        print(f"Saved target histogram to: {cont_fig_path}")
+        print(f"Saved histogram to: {cont_fig_path}")
 
-    # 保存图片
-   
+    # 箱图与outliers
+    for col in price_cols:
+        data = df[col].dropna()
 
-    # # 6. 目标变量分布
-    # print("\n" + "=" * 80)
-    # print("6) TARGET DISTRIBUTION")
-    # print("=" * 80)
-    # if target_col not in df.columns:
-    #     print(f"Target column '{target_col}' not found in df. Skipping target distribution.")
-    # else:
-    #     y = df[target_col]
-    #     print("Target basic stats:")
-    #     print(y.describe())
+        plt.figure(figsize=(6, 5))
 
-    #     zero_ratio = (y == 0).mean() * 100
-    #     print(f"Zero ratio: {zero_ratio:.2f}%")
+        plt.boxplot(
+            data,
+            vert=True,
+            showfliers=True   # 显示异常值
+        )
 
-    #     # 直方图
-    #     plt.figure(figsize=(8, 5))
-    #     plt.hist(y.dropna(), bins=50)
-    #     plt.title(f"Target Distribution: {target_col}")
-    #     plt.xlabel(target_col)
-    #     plt.ylabel("Count")
-    #     target_fig_path = FIG_DIR / "target_hist.png"
-    #     plt.savefig(target_fig_path, dpi=150, bbox_inches="tight")
-    #     plt.close()
-    #     print(f"Saved target histogram to: {target_fig_path}")
+        plt.title(f"Boxplot of {col}")
+        plt.xlabel(col)
+        plt.ylabel(col)
 
-    #     # log1p 直方图
-    #     plt.figure(figsize=(8, 5))
-    #     plt.hist((y.dropna()).map(lambda v: 0 if v < 0 else v).pipe(lambda s: s.apply(lambda v: __import__("math").log1p(v))),
-    #              bins=50)
-    #     plt.title(f"Target Distribution (log1p): {target_col}")
-    #     plt.xlabel(f"log1p({target_col})")
-    #     plt.ylabel("Count")
-    #     target_log_fig_path = FIG_DIR / "target_hist_log1p.png"
-    #     plt.savefig(target_log_fig_path, dpi=150, bbox_inches="tight")
-    #     plt.close()
-    #     print(f"Saved log1p target histogram to: {target_log_fig_path}")
+        plt.tight_layout()
+
+        cont_fig_path = FIG_DIR / f"{col}_boxplot.png"
+        clear_raw_csvs(FIG_DIR, patterns=[f"{col}_boxplot.png"])
+        plt.savefig(cont_fig_path, dpi=150, bbox_inches="tight")
+        plt.close()
+        print(f"Saved boxplot to: {cont_fig_path}")
+
+    for col in price_cols:
+        data = df[col].dropna()
+        # IQR 方法检测异常值数量
+        print("\n---"  f"{col} Outliers ---")
+        n = len(data)
+        q1 = data.quantile(0.25)
+        q3 = data.quantile(0.75)
+        iqr = q3 - q1
+        lb_iqr = q1 - 1.5 * iqr
+        ub_iqr = q3 + 1.5 * iqr
+        out_iqr = ((data < lb_iqr) | (data > ub_iqr)).sum()
+        print(f"{col} - IQR outliers: {out_iqr} ({out_iqr / n:.2%})")
+
+    print("\n--- 类别变量分析 ---")
+    category_cols = list("store_id sku_id is_featured_sku is_display_sku is_discount_sku".split())
+
+    binary_cols = ["is_featured_sku", "is_display_sku", "is_discount_sku"]
+
+    binary_summary = {}
+
+    for col in binary_cols:
+        vc = df[col].value_counts(dropna=False)
+        ratio = df[col].value_counts(normalize=True, dropna=False)
+
+        summary = pd.DataFrame({
+            "count": vc,
+            "ratio": ratio
+        })
+
+        print(f"\n--- {col} ---")
+        print(summary)
+
+        binary_summary[col] = summary
+
+    store_counts = df["store_id"].value_counts()
+
+    store_summary = pd.DataFrame({
+        "count": store_counts,
+        "ratio": store_counts / len(df)
+    })
+
+    print("\n--- store_id summary (top 10) ---")
+    print(store_summary.head(10))
+
+    print("\n--- store_id summary (Least 10) ---")
+    print(store_summary.tail(10))
+
+    print("\nNumber of stores:", store_counts.shape[0])
+    print("Median samples per store:", store_counts.median())
+    print("Min samples per store:", store_counts.min())
+
+    print("\n--- sku_id ---")
+    sku_counts = df["sku_id"].value_counts()
+
+    print("\nNumber of SKUs:", sku_counts.shape[0])
+    print("Median samples per SKU:", sku_counts.median())
+    print("Min samples per SKU:", sku_counts.min())
+
+    # 看看 SKU 样本数分布（分位数）
+    print("\nSKU sample count quantiles:")
+    print(sku_counts.quantile([0.1, 0.25, 0.5, 0.75, 0.9]))
+
+    # 目标变量
+    print("\n--- units sold (target var) ---")
+
+    if target_col not in df.columns:
+        print(f"Target column '{target_col}' not found in df. Skipping target distribution.")
+    else:
+        y = df[target_col]
+        print("\n--- Basic Statistics ---")
+        print(y.describe())
+
+        zero_cnt = (y == 0).sum()
+        zero_ratio = zero_cnt / len(y) * 100
+        print("\n--- Zero values ---")
+        print("Zero count:", zero_cnt)
+        print("Zero ratio:", f"{zero_ratio:.2%}")
+
+        # 直方图
+        print("\n--- 目标变量直方图 ---")
+        plt.figure(figsize=(8, 5))
+        plt.hist(y.dropna(), bins=50)
+        plt.title(f"Target Distribution: {target_col}")
+        plt.xlabel(target_col)
+        plt.ylabel("Count")
+        target_fig_path = FIG_DIR / "target_hist.png"
+        clear_raw_csvs(FIG_DIR, patterns=["target_hist.png"])
+        plt.savefig(target_fig_path, dpi=150, bbox_inches="tight")
+        plt.close()
+        print(f"Saved target histogram to: {target_fig_path}")
+
+        # log1p 直方图
+        plt.figure(figsize=(8, 5))
+        plt.hist((y.dropna()).map(lambda v: 0 if v < 0 else v).pipe(lambda s: s.apply(lambda v: __import__("math").log1p(v))),
+                 bins=50)
+        plt.title(f"Target Distribution (log1p): {target_col}")
+        plt.xlabel(f"log1p({target_col})")
+        plt.ylabel("Count")
+        target_log_fig_path = FIG_DIR / "target_hist_log1p.png"
+        clear_raw_csvs(FIG_DIR, patterns=["target_hist_log1p.png"])
+        plt.savefig(target_log_fig_path, dpi=150, bbox_inches="tight")
+        plt.close()
+        print(f"Saved log1p target histogram to: {target_log_fig_path}")
+
+
+
+
 
     # # 7. 数值型相关性热力图
     # print("\n" + "=" * 80)
