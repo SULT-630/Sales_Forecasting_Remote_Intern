@@ -504,9 +504,47 @@ def plot_category_mean_with_count(df, x, y="log_sales", sort=True, min_count=1):
     print(f"Saved category_mean_count plot to: {category_mean_count_fig_path}")
     return g
 
-# def Dataset_bivariate_analysis(df: pd.DataFrame, target_col: str = "units_sold") -> None:
+# SKU排序和店铺相关性热力图
+def SKU_rank_store_heatmap_analysis(df: pd.DataFrame, target_col: str = "units_sold") -> None:
+    # store × sku 的均值
+    store_sku_mean = (
+        df
+        .groupby(["store_id", "sku_id"], observed=True)["log_sales"]
+        .mean()
+        .reset_index()
+    )
 
+    # 在每个 store 内做 SKU 排名
+    store_sku_mean["sku_rank_in_store"] = (
+        store_sku_mean
+        .groupby("store_id")["log_sales"]
+        .rank(ascending=False, method="average")
+    )
 
+    # 转成矩阵：rows=sku, cols=store
+    heatmap_df = store_sku_mean.pivot(
+        index="sku_id",
+        columns="store_id",
+        values="sku_rank_in_store"
+    )
+
+    # 绘制热力图
+    plt.figure(figsize=(12, 6))
+    sns.heatmap(
+        heatmap_df,
+        cmap="viridis",
+        cbar_kws={"label": "SKU rank (lower = better)"}
+    )
+    plt.xlabel("store_id")
+    plt.ylabel("sku_id")
+    plt.title("SKU rank consistency across stores")
+    plt.tight_layout()
+
+    SKU_rank_store_heatmap_fig_path = FIG_DIR / f"SKU_rank_store_heatmap.png"
+    clear_raw_csvs(FIG_DIR, patterns=[f"SKU_rank_store_heatmap.png"])
+    plt.savefig(SKU_rank_store_heatmap_fig_path, dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"Saved SKU_rank_store_heatmap plot to: {SKU_rank_store_heatmap_fig_path}")
 
     # # 7. 数值型相关性热力图
     # print("\n" + "=" * 80)
@@ -546,5 +584,7 @@ def main():
     category_cols = list("store_id sku_id is_featured_sku is_display_sku is_discount_sku".split())
     for col in category_cols:
         cate[col] = plot_category_mean_with_count(df_after_log, x=col, y="log_sales", sort=True, min_count=50) 
+    SKU_rank_store_heatmap_analysis(df_after_log, target_col="units_sold")
+
 if __name__ == "__main__":
     main()
