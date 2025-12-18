@@ -177,11 +177,12 @@ def Dataset_repeated_values(df: pd.DataFrame, target_col: str = "units_sold") ->
     print(f"Duplicated rows ratio: {dup_row_ratio:.2%}")
 
 # Univaraite analysis and visualizations
-def Dataset_univariate_analysis(df: pd.DataFrame, target_col: str = "units_sold") -> None:
+def Dataset_univariate_analysis(df: pd.DataFrame, target_col: str = "units_sold") -> pd.DataFrame:
     print("\n" + "=" * 80)
     print("5) Univaraite analysis and visualizations")
     print("=" * 80)
 
+    # 连续数值型分析
     print("\n--- 连续数值型分析 ---")
     continuous_cols = list("total_price base_price discount_ratio".split())
     cont = df[continuous_cols]
@@ -206,7 +207,7 @@ def Dataset_univariate_analysis(df: pd.DataFrame, target_col: str = "units_sold"
     eps = 1e-12
     out["CV"] = (std / (mean.abs() + eps)).replace([np.inf, -np.inf], np.nan)
 
-    # CV经验分级（你可以按业务再调阈值）
+    # CV经验分级（阈值可以重新调整）
     # low: <=0.10  (相对稳定)
     # medium: (0.10, 0.30]
     # high: >0.30 (相对波动大)
@@ -217,8 +218,6 @@ def Dataset_univariate_analysis(df: pd.DataFrame, target_col: str = "units_sold"
     )
 
     # rCV（robust CV）：用IQR替代std、用median替代mean
-    # 常见定义：rCV = (IQR / 1.349) / |median|
-    # 其中 1.349 让“正态分布下 IQR/1.349 ≈ std”
     median = cont.median()
     robust_std = out["IQR"] / 1.349
     out["rCV"] = (robust_std / (median.abs() + eps)).replace([np.inf, -np.inf], np.nan)
@@ -293,6 +292,7 @@ def Dataset_univariate_analysis(df: pd.DataFrame, target_col: str = "units_sold"
         out_iqr = ((data < lb_iqr) | (data > ub_iqr)).sum()
         print(f"{col} - IQR outliers: {out_iqr} ({out_iqr / n:.2%})")
 
+    # 类别变量分析
     print("\n--- 类别变量分析 ---")
     category_cols = list("store_id sku_id is_featured_sku is_display_sku is_discount_sku".split())
 
@@ -384,7 +384,127 @@ def Dataset_univariate_analysis(df: pd.DataFrame, target_col: str = "units_sold"
         plt.close()
         print(f"Saved log1p target histogram to: {target_log_fig_path}")
 
+    df = df.copy()
+    # 添加 log_sales 列
+    df["log_sales"] = np.log1p(df["units_sold"])
+    print("\nAdded 'log_sales' column to df.")
+    print(df[["units_sold", "log_sales"]].head(5))
+    print(df[["units_sold", "log_sales"]].tail(5))
+    print("\n--- dtypes ---")
+    for col in ["units_sold", "log_sales"]:
+        print(f"{col:<25} {df[col].dtype}")
 
+    return df
+
+# 双变量分析 feature v.s target
+# 观察关系形状
+def plot_scatter_sample(df, x, y = "log_sales", sample_size=30000, title = None):
+    d = df[[x, y]].dropna()
+    if len(d) > sample_size:
+        d = d.sample(sample_size, random_state=42)
+    plt.figure(figsize=(8, 5))
+    plt.scatter(d[x], d[y], alpha=0.5, s=10)
+    plt.xlabel(x)
+    plt.ylabel(y)
+    plt.title(title or f"{y} vs {x} (sample scatter)")
+    plt.tight_layout()
+    scatter_fig_path = FIG_DIR / f"scatter_{x}_vs_{y}.png"
+    clear_raw_csvs(FIG_DIR, patterns=[f"scatter_{x}_vs_{y}.png"])
+    plt.savefig(scatter_fig_path, dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"Saved scatter plot to: {scatter_fig_path}")
+
+def plot_hexbin(df, x, y="log_sales", gridsize=60, title=None):
+    d = df[[x, y]].dropna()
+    plt.figure(figsize=(8, 5))
+    hb = plt.hexbin(d[x], d[y], gridsize=gridsize, mincnt=1)
+    plt.colorbar(hb, label="count")
+    plt.xlabel(x)
+    plt.ylabel(y)
+    plt.title(title or f"{y} vs {x} (hexbin)")
+    plt.tight_layout()
+    hexbin_fig_path = FIG_DIR / f"hexbin_{x}_vs_{y}.png"
+    clear_raw_csvs(FIG_DIR, patterns=[f"hexbin_{x}_vs_{y}.png"])
+    plt.savefig(hexbin_fig_path, dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"Saved hexbin plot to: {hexbin_fig_path}")
+
+def plot_binned_mean(df, x, y="log_sales", bins=20, title=None, show_count=False):
+    d = df[[x, y]].dropna().copy()
+
+    # 分位数分箱：每箱数量更均衡（更稳）
+    d["bin"] = pd.qcut(d[x], q=bins, duplicates="drop")
+
+    g = d.groupby("bin", observed=True).agg(
+        x_mid=(x, "median"),
+        y_mean=(y, "mean"),
+        y_median=(y, "median"),
+        n=(y, "size"),
+        y_std=(y, "std")
+    ).reset_index()
+
+    # 简单误差条：标准误
+    g["y_se"] = g["y_std"] / np.sqrt(g["n"].clip(lower=1))
+
+    plt.figure(figsize=(8, 5))
+    plt.plot(g["x_mid"], g["y_mean"], marker="o", label="bin mean")
+    plt.fill_between(g["x_mid"],
+                     g["y_mean"] - 1.96 * g["y_se"],
+                     g["y_mean"] + 1.96 * g["y_se"],
+                     alpha=0.2, label="~95% CI")
+    plt.xlabel(x)
+    plt.ylabel(f"mean({y}) within bins")
+    plt.title(title or f"Binned mean curve: {y} vs {x}")
+    plt.tight_layout()
+    plt.legend()
+    binned_mean_fig_path = FIG_DIR / f"binned_mean_{x}_vs_{y}.png"
+    clear_raw_csvs(FIG_DIR, patterns=[f"binned_mean_{x}_vs_{y}.png"])
+    plt.savefig(binned_mean_fig_path, dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"Saved binned_mean plot to: {binned_mean_fig_path}")
+    
+
+    if show_count:
+        for _, row in g.iterrows():
+            plt.text(row["x_mid"], row["y_mean"], int(row["n"]), fontsize=8, alpha=0.7)
+
+    plt.show()
+
+    return g
+
+# 类别变量与目标变量关系
+def plot_category_mean_with_count(df, x, y="log_sales", sort=True, min_count=1):
+    g = (
+        df.groupby(x,observed = True)[y]
+        .agg(mean="mean", median="median", count="size")
+        .reset_index()
+    )
+    g = g[g["count"] >= min_count]
+    if sort:
+        g = g.sort_values("mean")
+
+    fig, ax1 = plt.subplots(figsize=(10,4))
+    ax1.plot(g[x].astype(str), g["mean"], marker="o", label="mean")
+    ax1.plot(g[x].astype(str), g["median"], marker="x", label="median")
+    ax1.set_ylabel(f"{y}")
+    ax1.legend()
+    ax1.tick_params(axis="x", rotation=45)
+
+    ax2 = ax1.twinx()
+    ax2.bar(g[x].astype(str), g["count"], alpha=0.2)
+    ax2.set_ylabel("count")
+
+    plt.title(f"{x}: mean/median({y}) with counts")
+    plt.tight_layout()
+
+    category_mean_count_fig_path = FIG_DIR / f"category_mean_count_{x}_vs_{y}.png"
+    clear_raw_csvs(FIG_DIR, patterns=[f"category_mean_count_{x}_vs_{y}.png"])
+    plt.savefig(category_mean_count_fig_path, dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"Saved category_mean_count plot to: {category_mean_count_fig_path}")
+    return g
+
+# def Dataset_bivariate_analysis(df: pd.DataFrame, target_col: str = "units_sold") -> None:
 
 
 
@@ -413,9 +533,18 @@ def main():
     df_after_type_and_semantic = Dataset_type_transform(raw_df)
     df_after_missing = Dataset_missing_values(df_after_type_and_semantic, target_col="units_sold")
     Dataset_repeated_values(df_after_missing, target_col="units_sold")
+    df_after_log = Dataset_univariate_analysis(df_after_missing, target_col="units_sold")
+    
+    cont = {}
+    continuous_cols = list("total_price base_price discount_ratio".split())
+    for col in continuous_cols:
+        plot_scatter_sample(df_after_log, x=col, y="log_sales", sample_size=30000)
+        plot_hexbin(df_after_log, x=col, y="log_sales", gridsize=60)
+        cont[col] = plot_binned_mean(df_after_log, x=col, y="log_sales", bins=15)
 
-    Dataset_univariate_analysis(df_after_missing, target_col="units_sold")
-
-
+    cate = {}
+    category_cols = list("store_id sku_id is_featured_sku is_display_sku is_discount_sku".split())
+    for col in category_cols:
+        cate[col] = plot_category_mean_with_count(df_after_log, x=col, y="log_sales", sort=True, min_count=50) 
 if __name__ == "__main__":
     main()
