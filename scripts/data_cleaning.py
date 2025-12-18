@@ -563,6 +563,39 @@ def SKU_rank_store_heatmap_analysis(df: pd.DataFrame, target_col: str = "units_s
     #     plt.close()
     #     print(f"Saved correlation heatmap to: {heatmap_path}")
 
+# total price 大于 base price 的异常数据处理
+def handle_price_anomalies(df: pd.DataFrame) -> pd.DataFrame:
+    abn = df.loc[df["total_price"] > df["base_price"]].copy()
+    abn["diff"] = abn["total_price"] - abn["base_price"]
+    abn["ratio"] = (abn["total_price"] / abn["base_price"]).round(2)
+    # summary = (
+    # abn.groupby(["sku_id", "store_id"], observed=True)
+    #    .agg(
+    #        n=("diff", "size"),
+    #        diff_nunique=("diff", "nunique"),
+    #        ratio_nunique=("ratio", "nunique"),
+    #        diff_mean=("diff", "mean"),
+    #        diff_median=("diff", "median"),
+    #        ratio_mean=("ratio", "mean"),
+    #        ratio_median=("ratio", "median"),
+    #    )
+    #    .reset_index()
+    #    .sort_values(["n", "diff_nunique", "ratio_nunique"], ascending=[False, True, True])
+    # )
+    total_n = len(abn)
+    print("\n--- Price Anomalies Summary ---")
+    for col in ["week", "store_id", "sku_id", "is_featured_sku", "is_display_sku", "is_discount_sku"]:
+        summary = (
+            abn[col]
+            .value_counts(dropna=False)
+            .reset_index()
+        )
+        summary.columns = [col, "count"]
+        summary["ratio"] = summary["count"] / total_n
+        print(summary.sort_values("count", ascending=False).head(10))
+
+    return abn
+
 def main():
 
     raw_df = load_kaggle_dataset()
@@ -585,6 +618,6 @@ def main():
     for col in category_cols:
         cate[col] = plot_category_mean_with_count(df_after_log, x=col, y="log_sales", sort=True, min_count=50) 
     SKU_rank_store_heatmap_analysis(df_after_log, target_col="units_sold")
-
+    abn = handle_price_anomalies(df_after_log)
 if __name__ == "__main__":
     main()
