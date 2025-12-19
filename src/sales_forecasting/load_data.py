@@ -1,7 +1,7 @@
 """
 Script: load_data.py
 Purpose: Connect to Kaggle, download dataset, and load raw data into DataFrame
-Run: python scripts/load_data.py
+Run: python src/sales_forecasting/load_data.py
 """
 
 from pathlib import Path

@@ -1,7 +1,7 @@
 """
 Script: data_cleaning.py
 Purpose: Data Cleaning Module for Weekly SKU-Store Sales Panel Data including EDA, solving missing values, and outlier detection with summary and visualizations.
-Run: python scripts/data_cleaning.py
+Run: python src/sales_forecasting/data_cleaning.py
 """
 
 # Dataset Description:
@@ -40,7 +40,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 # 各种路径
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 FIG_DIR = PROJECT_ROOT / "artifacts" / "figures"
 METRIC_DIR = PROJECT_ROOT / "artifacts" / "metrics"
 FIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -546,42 +546,12 @@ def SKU_rank_store_heatmap_analysis(df: pd.DataFrame, target_col: str = "units_s
     plt.close()
     print(f"Saved SKU_rank_store_heatmap plot to: {SKU_rank_store_heatmap_fig_path}")
 
-    # # 7. 数值型相关性热力图
-    # print("\n" + "=" * 80)
-    # print("7) CORRELATION / HEATMAP (numeric only)")
-    # print("=" * 80)
-    # if len(numeric_cols) < 2:
-    #     print("Not enough numeric columns to compute correlation.")
-    # else:
-    #     corr = df[numeric_cols].corr()
-
-    #     plt.figure(figsize=(10, 8))
-    #     sns.heatmap(corr, annot=False, center=0)
-    #     plt.title("Correlation Heatmap (Numeric Features)")
-    #     heatmap_path = FIG_DIR / "correlation_heatmap.png"
-    #     plt.savefig(heatmap_path, dpi=150, bbox_inches="tight")
-    #     plt.close()
-    #     print(f"Saved correlation heatmap to: {heatmap_path}")
-
 # total price 大于 base price 的异常数据处理
 def handle_price_anomalies(df: pd.DataFrame) -> pd.DataFrame:
     abn = df.loc[df["total_price"] > df["base_price"]].copy()
     abn["diff"] = abn["total_price"] - abn["base_price"]
     abn["ratio"] = (abn["total_price"] / abn["base_price"]).round(2)
-    # summary = (
-    # abn.groupby(["sku_id", "store_id"], observed=True)
-    #    .agg(
-    #        n=("diff", "size"),
-    #        diff_nunique=("diff", "nunique"),
-    #        ratio_nunique=("ratio", "nunique"),
-    #        diff_mean=("diff", "mean"),
-    #        diff_median=("diff", "median"),
-    #        ratio_mean=("ratio", "mean"),
-    #        ratio_median=("ratio", "median"),
-    #    )
-    #    .reset_index()
-    #    .sort_values(["n", "diff_nunique", "ratio_nunique"], ascending=[False, True, True])
-    # )
+
     total_n = len(abn)
     print("\n--- Price Anomalies Summary ---")
     for col in ["week", "store_id", "sku_id", "is_featured_sku", "is_display_sku", "is_discount_sku"]:
@@ -619,5 +589,6 @@ def main():
         cate[col] = plot_category_mean_with_count(df_after_log, x=col, y="log_sales", sort=True, min_count=50) 
     SKU_rank_store_heatmap_analysis(df_after_log, target_col="units_sold")
     abn = handle_price_anomalies(df_after_log)
+
 if __name__ == "__main__":
     main()
