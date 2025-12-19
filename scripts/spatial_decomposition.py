@@ -77,7 +77,8 @@ def depict_mixed_and_seperate_sku_sales_curve(df: pd.DataFrame) -> None:
         print(f"Saved SKU sales curve to: {sku_sales_fig_path}")
 
 # 特征工程和时间编码等
-def encoding(df: pd.DataFrame) -> pd.DataFrame:
+# def encoding(df: pd.DataFrame) -> pd.DataFrame:
+    # 时间编码
 
 
 def main():
