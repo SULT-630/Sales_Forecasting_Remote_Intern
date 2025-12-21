@@ -7,23 +7,29 @@ Run: python src/sales_forecasting/experiments.py
 from sales_forecasting.Train_Eval import ModelRunner
 from sales_forecasting.Train_Eval import Evaluator
 from sales_forecasting.Train_Eval import Visualizer
+from sales_forecasting.Train_Eval import DataProcessor
 
 class Experiment:
-    def __init__(self, df, target_col, model, task_type):
+    def __init__(self, df, target_col, model, task_type, Title):
         self.df = df
         self.target_col = target_col
         self.model = model
         self.task_type = task_type
+        self.Title = Title
 
-    def run(self, X_test, X_train, y_test, y_train, Title):
+    def run(self, Title):
+        processor = DataProcessor(self.target_col)
+        X_train, X_test, y_train, y_test = processor.split(self.df)
 
         runner = ModelRunner(self.model)
         runner.train(X_train, y_train)
 
         y_pred, y_prob = runner.predict(X_test)
-        runner.build_dataframe(y_test, y_pred, Title, y_prob)
+        y_pred_train, y_prob_train = runner.predict(X_train)
+        runner.build_dataframe(X_test, y_test, y_pred, Title, y_prob)
         evaluator = Evaluator(self.task_type)
         metrics = evaluator.evaluate(y_test, y_pred, Title, y_prob)
+        metrics_train = evaluator.evaluate(y_train,y_pred_train,Title, y_prob_train)
 
         if self.task_type == "regression":
             Visualizer.plot_regression(y_test, y_pred, Title)

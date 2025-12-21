@@ -5,7 +5,7 @@ Run: python scripts/entrance.py
 """
 
 import pandas as pd
-from xgboost import XGBClassifier
+from xgboost import XGBRegressor
 from sales_forecasting.experiment import Experiment
 from sales_forecasting.spatial_decomposition import df_after_missing_value_handling
 
@@ -13,17 +13,22 @@ test_path = "data/raw/test_nfcJ3J5.csv"
 target_col = "unit_solds"
 
 my_dataframe = df_after_missing_value_handling.copy()
+my_dataframe = my_dataframe.drop(columns=["week"])
+print(my_dataframe.head())
 
-model = XGBClassifier(
-    n_estimators=300,
-    max_depth=6,
+model = XGBRegressor(
+    objective="reg:squarederror",
+    n_estimators=500,
     learning_rate=0.05,
+    max_depth=8,
     subsample=0.8,
     colsample_bytree=0.8,
-    eval_metric="logloss"
+    random_state=42,
+    n_jobs=-1,
+    enable_categorical=True
 )
 
-exp = exp = Experiment(
+exp = Experiment(
     df=my_dataframe,
     target_col="units_sold",
     model=model,
@@ -31,22 +36,4 @@ exp = exp = Experiment(
     Title = "XGB_RAW_DATA"
 )
 
-def load_and_split_data(
-    df_train: pd.DataFrame,
-    df_test: pd.DataFrame,
-    target_col: str
-):
-
-    for name, df in [("train", df_train), ("test", df_test)]:
-        if target_col not in df.columns:
-            raise ValueError(
-                f"{target_col} not found in {name} dataset columns"
-            )
-
-    X_train = df_train.drop(columns=[target_col])
-    y_train = df_train[target_col]
-
-    X_test = df_test.drop(columns=[target_col])
-    y_test = df_test[target_col]
-
-    return X_train, X_test, y_train, y_test
+exp.run(Title = "XGB_RAW_DATA")

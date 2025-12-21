@@ -8,6 +8,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
+from sklearn.model_selection import train_test_split
 from sales_forecasting.load_data import clear_raw_csvs
 from sklearn.metrics import roc_curve
 from sklearn.metrics import (
@@ -22,6 +23,22 @@ METRIC_DIR = PROJECT_ROOT / "artifacts" / "metrics" / "Model_evaluation"
 FIG_DIR.mkdir(parents=True, exist_ok=True)
 METRIC_DIR.mkdir(parents=True, exist_ok=True)
 
+class DataProcessor:
+    def __init__(self, target_col, test_size=0.2, random_state=42):
+        self.target_col = target_col
+        self.test_size = test_size
+        self.random_state = random_state
+
+    def split(self, df: pd.DataFrame):
+        X = df.drop(columns=[self.target_col])
+        y = df[self.target_col]
+
+        return train_test_split(
+            X, y,
+            test_size=self.test_size,
+            random_state=self.random_state
+        )
+    
 class ModelRunner:
     def __init__(self, model):
         self.model = model
@@ -35,12 +52,33 @@ class ModelRunner:
         else:
             return self.model.predict(X_test), None
         
-    def build_dataframe(X_test, y_test, y_pred, Title, y_prob=None):
+    def build_dataframe(self, X_test, y_test, y_pred, Title, y_prob=None):
         df = X_test.copy()
-        df["Y_true"] = y_test.values
+        
+        if hasattr(y_test, "reindex"):  # pandas Series/DataFrame
+            y_true_aligned = y_test.reindex(df.index)
+            # 如果 y_test 是 DataFrame，取第一列
+            if isinstance(y_true_aligned, pd.DataFrame):
+                y_true_aligned = y_true_aligned.iloc[:, 0]
+            df["Y_true"] = y_true_aligned.values
+        else:
+            df["Y_true"] = y_test
+
+        # 3) y_pred
         df["Y_pred"] = y_pred
+
+        # 4) y_prob（仅在存在时写入）
         if y_prob is not None:
-            df["y_pred_prob"] = y_prob[:,1]
+            # 二分类
+            if getattr(y_prob, "ndim", 1) == 2 and y_prob.shape[1] == 2:
+                df["Y_prob_pos"] = y_prob[:, 1]
+            # 多分类：每列一个类别概率
+            elif getattr(y_prob, "ndim", 1) == 2 and y_prob.shape[1] > 2:
+                for k in range(y_prob.shape[1]):
+                    df[f"Y_prob_class_{k}"] = y_prob[:, k]
+            else:
+                # 其他情况：直接存原值（不一定常见）
+                df["Y_prob"] = y_prob
 
         clear_raw_csvs(METRIC_DIR, patterns=[f"{Title}_Compare.csv"])
         compare_path = METRIC_DIR / f"{Title}_Compare.csv"
@@ -68,10 +106,7 @@ class Evaluator:
             if y_prob is not None:
                 metrics["AUC"] = roc_auc_score(y_true, y_prob[:, 1])
 
-        clear_raw_csvs(METRIC_DIR, patterns=[f"{Title}_Eval_index.csv"])
-        metrics_path = METRIC_DIR / f"{Title}_Eval_index.csv"
-        metrics.to_csv(metrics_path, index=True)
-        print(f"\nSaved {Title} Evaluation index to: {metrics_path}")
+        print(metrics)
 
         return metrics
     
