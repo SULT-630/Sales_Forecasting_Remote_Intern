@@ -63,17 +63,18 @@ def load_kaggle_dataset() -> pd.DataFrame:
     for f in csv_files:
         print(" -", f.name)
 
-    csv_path = csv_files[2]
-    print("Using file:", csv_path.name)
+    for i in [1,2]:
+        csv_path = csv_files[i]
+        print("Using file:", csv_path.name)
 
-    # 7. 读成 DataFrame
-    df = pd.read_csv(csv_path)
+        # 7. 读成 DataFrame
+        df = pd.read_csv(csv_path)
 
-    # 8. 复制一份到 data/raw（项目规范）
-    output_path = RAW_DATA_DIR / csv_path.name
-    df.to_csv(output_path, index=False)
+        # 8. 复制一份到 data/raw（项目规范）
+        output_path = RAW_DATA_DIR / csv_path.name
+        df.to_csv(output_path, index=False)
 
-    print("Raw data saved to:", output_path)
+        print("Raw data saved to:", output_path)
 
     return df
 

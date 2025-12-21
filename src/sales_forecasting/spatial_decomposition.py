@@ -16,7 +16,7 @@ from sales_forecasting.data_cleaning import Dataset_missing_values
 from sales_forecasting.data_cleaning import Dataset_univariate_analysis
 
 # 各种路径
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 FIG_DIR = PROJECT_ROOT / "artifacts" / "figures" / "spatial_decomposition"
 METRIC_DIR = PROJECT_ROOT / "artifacts" / "metrics" / "spatial_decomposition"
 FIG_DIR.mkdir(parents=True, exist_ok=True)
