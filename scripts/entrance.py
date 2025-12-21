@@ -14,7 +14,7 @@ test_path = "data/raw/test_nfcJ3J5.csv"
 target_col = "unit_solds"
 
 my_dataframe = df_after_missing_value_handling.copy()
-my_dataframe = preprocess_data(my_dataframe, target_col=None)
+my_dataframe = preprocess_data(my_dataframe, target_col='units_sold', id_col='record_ID')
 print("--- Dataframe loaded for experiment: ---")
 print(my_dataframe.head(5))
 
@@ -32,10 +32,10 @@ model = XGBRegressor(
 
 exp = Experiment(
     df=my_dataframe,
-    target_col="units_sold",
+    target_col="log_sales",
     model=model,
     task_type="regression",
-    Title = "XGB_WITH_DISCOUNT"
+    Title = "XGB_log_sales"
 )
 
-exp.run_kfold(Title = "XGB_WITH_DISCOUNT",transform_type=None, n_splits=5)
+exp.run_kfold(Title = "XGB_log_sales",transform_type='log1p', n_splits=5)

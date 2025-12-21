@@ -16,8 +16,7 @@ def preprocess_data(df: pd.DataFrame, target_col: str, id_col: str = "record_ID"
     """
 
     df = df.copy()
-    # Log transformation of sales
-    # df['log_sales'] = np.log1p(df[target_col])
-    df = df.drop(columns=['week', target_col], errors='ignore')
+    df['log_sales'] = np.log1p(df[target_col])
+    df = df.drop(columns=['week','is_discount_sku','discount_ratio', target_col], errors='ignore')
 
     return df
