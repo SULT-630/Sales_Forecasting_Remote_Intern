@@ -24,20 +24,35 @@ FIG_DIR.mkdir(parents=True, exist_ok=True)
 METRIC_DIR.mkdir(parents=True, exist_ok=True)
 
 class DataProcessor:
-    def __init__(self, target_col, test_size=0.2, random_state=42):
+    def __init__(self, target_col, id_col: str = "record_ID", test_size=0.2, random_state=42):
         self.target_col = target_col
+        self.id_col = id_col
         self.test_size = test_size
         self.random_state = random_state
 
-    def split(self, df: pd.DataFrame):
-        X = df.drop(columns=[self.target_col])
+    def get_Xy(self, df: pd.DataFrame):
+        drop_cols = [self.target_col]
+        if self.id_col in df.columns:
+            drop_cols.append(self.id_col)
+        X = df.drop(columns=drop_cols)
         y = df[self.target_col]
+        if self.id_col in df.columns:
+            X.index = df.loc[X.index, self.id_col]
+            y.index = X.index
+            
+        return X, y
+    
+    def split(self, df: pd.DataFrame):
+        X, y = self.get_Xy(df)
 
-        return train_test_split(
-            X, y,
+        X_train, X_test, y_train, y_test = train_test_split(
+            X,
+            y,
             test_size=self.test_size,
             random_state=self.random_state
         )
+
+        return X_train, X_test, y_train, y_test
     
 class ModelRunner:
     def __init__(self, model):
@@ -88,11 +103,19 @@ class ModelRunner:
 class Evaluator:
     def __init__(self, task_type):
         self.task_type = task_type
+    
+    def inverse_transform(self, y, transform_type: str):
+        if transform_type == "log1p":
+            return np.expm1(y)
+        return y
 
-    def evaluate(self, y_true, y_pred, Title, y_prob=None):
+    def evaluate(self, y_true, y_pred, Title, transform_type=None, y_prob=None):
         metrics = {}
 
         if self.task_type == "regression":
+            if transform_type is not None:
+                y_true = self.inverse_transform(y_true, transform_type=transform_type)
+                y_pred = self.inverse_transform(y_pred, transform_type=transform_type)
             metrics["RMSE"] = np.sqrt(mean_squared_error(y_true, y_pred))
             metrics["MAE"] = mean_absolute_error(y_true, y_pred)
             metrics["R2"] = r2_score(y_true, y_pred)
@@ -105,7 +128,7 @@ class Evaluator:
 
             if y_prob is not None:
                 metrics["AUC"] = roc_auc_score(y_true, y_prob[:, 1])
-
+        print(f"\nEvaluation Metrics for {Title}:")
         print(metrics)
 
         return metrics
@@ -144,4 +167,3 @@ class Visualizer:
         plt.savefig(ROC_fig_path, dpi=150, bbox_inches="tight")
         plt.close()
         print(f"Saved {Title} ROC curve to: {ROC_fig_path}")
- 

@@ -7,7 +7,6 @@ COLUMN_METADATA = {
     "record_ID": {
         "role": "identifier",
         "description": "Artificial row identifier with no business meaning",
-        "use_in_model": False,
     },
     "week": {
         "role": "time",
