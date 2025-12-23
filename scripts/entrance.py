@@ -38,4 +38,4 @@ exp = Experiment(
     Title = "XGB_log_sales"
 )
 
-exp.run_kfold(Title = "XGB_log_sales",transform_type='log1p', n_splits=5)
+exp.run(Title = "XGB_log_sales",transform_type='log1p')

@@ -24,11 +24,11 @@ FIG_DIR.mkdir(parents=True, exist_ok=True)
 METRIC_DIR.mkdir(parents=True, exist_ok=True)
 
 class DataProcessor:
-    def __init__(self, target_col, id_col: str = "record_ID", test_size=0.2, random_state=42):
+    def __init__(self, target_col, id_col: str = "record_ID", time_col: str = "week", test_size=0.2):
         self.target_col = target_col
         self.id_col = id_col
+        self.time_col = time_col
         self.test_size = test_size
-        self.random_state = random_state
 
     def get_Xy(self, df: pd.DataFrame):
         drop_cols = [self.target_col]
@@ -43,14 +43,23 @@ class DataProcessor:
         return X, y
     
     def split(self, df: pd.DataFrame):
-        X, y = self.get_Xy(df)
+        if self.time_col not in df.columns:
+            raise ValueError(f"df 中找不到时间列 time_col='{self.time_col}'")
 
-        X_train, X_test, y_train, y_test = train_test_split(
-            X,
-            y,
-            test_size=self.test_size,
-            random_state=self.random_state
-        )
+        df_sorted = df.sort_values(self.time_col).reset_index(drop=True)
+
+        n = len(df_sorted)
+        n_test = int(round(n * self.test_size))
+        n_test = max(1, n_test)          # 至少 1 条 test
+        n_train = n - n_test
+        if n_train <= 0:
+            raise ValueError("数据量太小或 test_size 太大，导致训练集为空。")
+
+        train_df = df_sorted.iloc[:n_train].copy()
+        test_df  = df_sorted.iloc[n_train:].copy()
+
+        X_train, y_train = self.get_Xy(train_df)
+        X_test,  y_test  = self.get_Xy(test_df)
 
         return X_train, X_test, y_train, y_test
     
@@ -59,15 +68,21 @@ class ModelRunner:
         self.model = model
 
     def train(self, X_train, y_train):
-        self.model.fit(X_train, y_train)
+        X=X_train.copy()
+        if "week" in X.columns:
+            X = X.drop(columns=["week"])
+        self.model.fit(X, y_train)
 
     def predict(self, X_test):
+        X = X_test.copy()
+        if "week" in X.columns:
+            X = X.drop(columns=["week"])
         if hasattr(self.model, "predict_proba"):
-            return self.model.predict(X_test), self.model.predict_proba(X_test)
+            return self.model.predict(X), self.model.predict_proba(X)
         else:
-            return self.model.predict(X_test), None
+            return self.model.predict(X), None
         
-    def build_dataframe(self, X_test, y_test, y_pred, Title, y_prob=None):
+    def build_dataframe(self, X_test, y_test, y_pred, Title, y_prob=None) -> pd.DataFrame:
         df = X_test.copy()
         
         if hasattr(y_test, "reindex"):  # pandas Series/DataFrame
@@ -99,6 +114,7 @@ class ModelRunner:
         compare_path = METRIC_DIR / f"{Title}_Compare.csv"
         df.to_csv(compare_path, index=True)
         print(f"\nSaved {Title} Compare dataframe to: {compare_path}")
+        return df
 
 class Evaluator:
     def __init__(self, task_type):
@@ -133,6 +149,62 @@ class Evaluator:
 
         return metrics
     
+
+def GROUPED_MAPE(group: pd.DataFrame, true_col: str, pred_col: str) -> float:
+    y_true = group[true_col].to_numpy()
+    y_pred = group[pred_col].to_numpy()
+    mask = (y_true != 0)
+    if mask.sum() == 0:
+        return np.nan
+    mape = np.mean(np.abs((y_true[mask] - y_pred[mask]) / y_true[mask])) * 100
+    return mape
+
+def MAPE(
+    df: pd.DataFrame,
+    week_col: str,
+    sku_col: str,
+    y_true_col: str,
+    y_pred_col: str,
+    sort_week: bool = True
+):
+
+    # --- Step 1: (week, sku) 级别 MAPE ---
+    mape_week_sku = (
+        df.groupby([week_col, sku_col], dropna=False,observed=False)
+          .apply(lambda g: GROUPED_MAPE(g, y_true_col, y_pred_col),include_groups=False)
+          .reset_index(name="mape_week_sku")   # <-- 保证结果一定是三列
+    )
+
+    # --- Step 2: week 级别 MAPE（对 sku 平均）---
+    mape_by_week = (
+        mape_week_sku.groupby(week_col, as_index=False, observed=False)["mape_week_sku"]
+                    .mean()
+                    .rename(columns={"mape_week_sku": "mape_by_week"})
+    )
+
+    if sort_week:
+        mape_by_week = mape_by_week.sort_values(by=week_col).reset_index(drop=True)
+
+    # --- Step 3: 画时间序列图 ---
+    plt.figure()
+    plt.plot(mape_by_week[week_col], mape_by_week["mape_by_week"], marker="o")
+    plt.xlabel(week_col)
+    plt.ylabel("MAPE")
+    plt.title("MAPE over time (averaged across sku)")
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.grid(True)
+    MAPE_fig_path = FIG_DIR / f"MAPE_Time_curve.png"
+    clear_raw_csvs(FIG_DIR, patterns=[f"MAPE_Time_curve.png"])
+    plt.savefig(MAPE_fig_path, dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"Saved MAPE time sequence curve to: {MAPE_fig_path}")
+
+    # --- Step 4: 总 MAPE（对 week 平均）---
+    overall_mape = mape_by_week["mape_by_week"].mean()
+
+    return mape_week_sku, mape_by_week, overall_mape
+                   
 class Visualizer:
     @staticmethod
     def plot_regression(y_true, y_pred, Title):
