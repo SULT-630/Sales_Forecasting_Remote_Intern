@@ -77,8 +77,145 @@ def depict_mixed_and_seperate_sku_sales_curve(df: pd.DataFrame) -> None:
         print(f"Saved SKU sales curve to: {sku_sales_fig_path}")
 
 # 特征工程和时间编码等
-# def encoding(df: pd.DataFrame) -> pd.DataFrame:
-    # 时间编码
+def encoding_year_month_quarter(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    df['year'] = df['week'].dt.year
+    df['month'] = df['week'].dt.month
+    df['quarter'] = df['week'].dt.quarter
+    return df
+
+def encoding_week_of_year(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    df['week_of_year'] = df['week'].dt.isocalendar().week
+    return df
+
+def encoding_is_month_start_end(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    df['is_month_start'] = df['week'].dt.is_month_start.astype(int)
+    df['is_month_end'] = df['week'].dt.is_month_end.astype(int)
+    return df
+
+def encoding_is_quarter_start_end(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    df['is_quarter_start'] = df['week'].dt.is_quarter_start.astype(int)
+    df['is_quarter_end'] = df['week'].dt.is_quarter_end.astype(int)
+    return df
+
+def encoding_sin_cos_week_of_year(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    df['sin_week_of_year'] = np.sin(2 * np.pi * df['week_of_year'] / 52)
+    df['cos_week_of_year'] = np.cos(2 * np.pi * df['week_of_year'] / 52)
+    return df
+
+def encoding_sin_cos_month(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    df['sin_month'] = np.sin(2 * np.pi * df['month'] / 12)
+    df['cos_month'] = np.cos(2 * np.pi * df['month'] / 12)
+    return df
+
+# 调用的时候注意
+def encoding_week_from_start(df: pd.DataFrame, start_date: pd.Timestamp) -> pd.DataFrame:
+    df = df.copy()
+    df['week_from_start'] = (df['week'] - start_date).dt.days // 7
+    return df
+
+# 检查是否正确
+def encoding_gap_since_lag_record(df: pd.DataFrame, lag_weeks: list) -> pd.DataFrame:
+    df = df.copy()
+    df = df.sort_values(by=['sku_id', 'week'])
+    for lag in lag_weeks:
+        df[f'gap_since_lag_{lag}_records'] = df.groupby('sku_id')['week'].diff(lag).dt.days.fillna(0) / 7
+    return df
+
+def encoding_lag_features(df: pd.DataFrame, lag_weeks: list) -> pd.DataFrame:
+    df = df.copy()
+    df = df.sort_values(by=['sku_id', 'week'])
+    for lag in lag_weeks:
+        df[f'lag_{lag}_weeks'] = df.groupby('sku_id')['units_sold'].shift(lag)
+    return df
+
+
+def rolling_mean_features(df: pd.DataFrame, window_sizes: list) -> pd.DataFrame:
+    df = df.copy()
+    df = df.sort_values(by=['sku_id', 'week'])
+
+    for window in window_sizes:
+        hist = df.groupby('sku_id')['units_sold'].shift(1)
+
+        df[f'rolling_mean_{window}_records'] = (
+            hist.groupby(df['sku_id'])
+                .transform(lambda x: x.rolling(window, min_periods=1).mean())
+        )
+
+        df[f'rolling_std_{window}_records'] = (
+            hist.groupby(df['sku_id'])
+                .transform(lambda x: x.rolling(window, min_periods=1).std())
+                .fillna(0)
+        )
+
+    return df
+
+
+def encoding_EWMA_features(df: pd.DataFrame, spans: list) -> pd.DataFrame:
+    df = df.copy()
+    df = df.sort_values(by=['sku_id', 'week'])
+
+    hist = df.groupby('sku_id')['units_sold'].shift(1)
+
+    for span in spans:
+        df[f'ewma_{span}_records'] = (
+            hist.groupby(df['sku_id'])
+                .transform(lambda x: x.ewm(span=span, adjust=False).mean())
+        )
+
+    return df
+
+
+def encoding_target_changing_rate(df: pd.DataFrame, periods: list) -> pd.DataFrame:
+    df = df.copy()
+    df = df.sort_values(by=['sku_id', 'week'])
+    for period in periods:
+        df[f'target_changing_rate_{period}_records'] = df.groupby('sku_id')['units_sold'].pct_change(periods=period).fillna(0)
+    return df
+
+def encoding_target_changing_rate_per_gap(
+    df: pd.DataFrame,
+    periods: list,
+    gap_col_template: str = 'gap_since_lag_{k}_records',
+    eps: float = 1e-6
+) -> pd.DataFrame:
+    df = df.copy()
+    for k in periods:
+        gap_col = gap_col_template.format(k=k)
+        if gap_col not in df.columns:
+            raise ValueError(f'Missing gap column: {gap_col}')
+
+        df[f'target_changing_rate_per_week_{k}'] = (
+            df[f'target_changing_rate_{k}_records'] /
+            (df[gap_col] + eps)
+        )
+    return df
+
+
+# 聚合特征
+def week_total_units_sold_feature(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    week_total_units_sold = df.groupby('week')['units_sold'].transform('sum')
+    df['week_total_units_sold'] = week_total_units_sold
+    return df
+
+def store_total_units_sold_feature(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    store_total_units_sold = df.groupby('store_id')['units_sold'].transform('sum')
+    df['store_total_units_sold'] = store_total_units_sold
+    return df
+
+def sku_total_units_sold_feature(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    sku_total_units_sold = df.groupby('sku_id')['units_sold'].transform('sum')
+    df['sku_total_units_sold'] = sku_total_units_sold
+    return df
+
 
 
 def main():
