@@ -47,7 +47,7 @@ class DataProcessor:
         if self.time_col not in df.columns:
             raise ValueError(f"df 中找不到时间列 time_col='{self.time_col}'")
 
-        df_sorted = df.sort_values(self.time_col,'sku_id').reset_index(drop=True)
+        df_sorted = df.sort_values(by=[self.time_col, 'sku_id']).reset_index(drop=True)
 
         n = len(df_sorted)
         n_test = int(round(n * self.test_size))
@@ -83,54 +83,218 @@ class ModelRunner:
         else:
             return self.model.predict(X), None
     
-    def rolling_predict(self, X_train, X_test, y_train, target_col = 'log_sales', time_col='week', group_col='sku_id'): # 检查group col还应该包含哪些
+    # def rolling_predict(self, X_train, X_test, y_train, target_col = 'log_sales', time_col='week', group_col='sku_id'): # 检查group col还应该包含哪些
+    #     train_X = X_train.copy()
+    #     test_X = X_test.copy()
+    #     train_y = y_train.copy()
+    #     train_df = train_X.copy()
+    #     train_df[target_col] = train_y
+
+    #     test_df = test_X.copy()
+    #     test_df[target_col] = np.nan
+    #     full_df = pd.concat([train_df, test_df], axis=0)
+
+    #     n_train = len(train_df)
+    #     n_test  = len(test_df)
+
+    #     train_feat_df = preprocess_data(train_df.copy())  
+    #     feature_cols = [c for c in train_feat_df.columns if c != target_col]
+    #     if time_col in feature_cols:
+    #         feature_cols.remove(time_col)
+        
+    #     preds = np.zeros(n_test, dtype=float)
+
+    #     for i in range(n_test):
+    #         pos = n_train + i  # full_df 里当前要预测的行位置（用 iloc，不受 record_ID index 影响）
+
+    #         # 取到 “截至当前行” 的子表
+    #         hist_df = full_df.iloc[:pos + 1].copy()
+
+    #         # 构造动态特征（lag/rolling/ewma等）
+    #         feat_hist_df = preprocess_data(hist_df)
+
+    #         # 取当前行的特征 X_curr，并对齐训练列 应该去除week
+    #         x_curr = feat_hist_df.iloc[-1][feature_cols]
+
+    #         x_curr = x_curr.reindex(feature_cols)
+
+    #         x_curr = x_curr.fillna(0.0)
+
+    #         # 预测
+    #         y_pred = float(self.model.predict(x_curr.to_frame().T)[0])
+    #         preds[i] = y_pred
+
+    #         # 把预测写回 full_df（这样下一步 rolling/lag 会用到它）
+    #         full_df.iat[pos, full_df.columns.get_loc(target_col)] = y_pred
+
+    #     # 输出：用 test 的 index（record_ID）对齐
+    #     pred_series = pd.Series(preds, index=test_df.index, name=f"pred_{target_col}")
+
+    #     return np.array(pred_series), full_df
+    def rolling_predict(
+        self, X_train, X_test, y_train,
+        target_col='log_sales', time_col='week', group_col='sku_id',
+        debug=True, check_every=50, sample_steps=5
+    ):
+
         train_X = X_train.copy()
         test_X = X_test.copy()
         train_y = y_train.copy()
+
         train_df = train_X.copy()
         train_df[target_col] = train_y
 
         test_df = test_X.copy()
         test_df[target_col] = np.nan
+
         full_df = pd.concat([train_df, test_df], axis=0)
 
         n_train = len(train_df)
         n_test  = len(test_df)
 
-        train_feat_df = preprocess_data(train_df.copy())  
+        # ====== 0) 基础检查：必须包含 group/time ======
+        assert group_col in full_df.columns, f"full_df 缺少 group_col={group_col}"
+        assert time_col in full_df.columns, f"full_df 缺少 time_col={time_col}"
+
+        # ====== 1) 顺序检查：你现在 rolling 是按行号滚动，所以必须先排序 ======
+        # 如果你“不想排序”，那就至少检查它已排序；这里我默认强制排序更安全
+        # 注意：排序会改变 train/test 的“行位置”，所以要记录 test 原 index 的位置映射
+        full_df["_is_train"] = [1]*n_train + [0]*n_test
+        full_df["_orig_index"] = full_df.index
+
+        full_df = full_df.sort_values([group_col, time_col, "_is_train"]).reset_index(drop=True)
+
+        # 重新定位 train/test 行（按 _is_train）
+        train_mask = full_df["_is_train"].values == 1
+        test_mask  = full_df["_is_train"].values == 0
+
+        # 训练特征列来自 preprocess(train_df) 的列集合（但现在 train_df 已被排序重置了）
+        train_df_sorted = full_df.loc[train_mask].copy()
+        train_feat_df = preprocess_data(train_df_sorted.copy(), target_col=target_col)
+
         feature_cols = [c for c in train_feat_df.columns if c != target_col]
         if time_col in feature_cols:
             feature_cols.remove(time_col)
-        
+
+        print(feature_cols)
+
         preds = np.zeros(n_test, dtype=float)
 
-        for i in range(n_test):
-            pos = n_train + i  # full_df 里当前要预测的行位置（用 iloc，不受 record_ID index 影响）
+        # ====== debug 采样记录 ======
+        debug_rows = []
+        sample_points = set(np.linspace(0, n_test-1, num=min(sample_steps, n_test), dtype=int)) if debug else set()
 
-            # 取到 “截至当前行” 的子表
+        # ====== 2) 逐步滚动 ======
+        test_positions = np.where(test_mask)[0]  # full_df 中 test 行的位置（排序后）
+
+        for i, pos in enumerate(test_positions):
+            print(f"Rolling predict step {i+1}/{n_test} (full_df pos={pos})")
+            # 截止到当前行（包含当前行）
             hist_df = full_df.iloc[:pos + 1].copy()
 
-            # 构造动态特征（lag/rolling/ewma等）
-            feat_hist_df = preprocess_data(hist_df)
+            # —— 核心：动态特征
+            feat_hist_df = preprocess_data(hist_df, target_col=target_col)
+            feat_hist_df = feat_hist_df.drop(columns=[time_col], errors='ignore')
 
-            # 取当前行的特征 X_curr，并对齐训练列 应该去除week
-            x_curr = feat_hist_df.iloc[-1][feature_cols]
+            # 训练时的列必须都在，否则列漂移
+            missing = set(feature_cols) - set(feat_hist_df.columns)
+            extra   = set(feat_hist_df.columns) - set(feature_cols) - {target_col}
+            # 当前行特征对齐
+            x_curr = feat_hist_df.iloc[[-1]].reindex(columns=feature_cols)
+            assert x_curr.shape[0] == 1, f"x_curr should be 1 row, got {x_curr.shape}"
+            x_curr.drop(labels=['week','_is_train','_orig_index'], errors='ignore', axis=1, inplace=True)
+            if debug and (missing or extra):
+                print(f"[WARN] step={i} feature drift: missing={list(missing)[:5]} extra={list(extra)[:5]}")
 
-            x_curr = x_curr.reindex(feature_cols)
 
-            x_curr = x_curr.fillna(0.0)
+            # 打印datetime行信息
+            # dt_cols = x_curr.select_dtypes(include=["datetime64[ns]", "datetimetz"]).columns
+            # print("datetime cols:", dt_cols.tolist())
 
-            # 预测
-            y_pred = float(self.model.predict(x_curr.to_frame().T)[0])
+
+            # ====== 3) 核心检查：当前行特征不能含 target_col 的任何“未来信息” ======
+            # 3.1 当前行 target 是 NaN（未写回前应该是 NaN）
+            # 注意：你是预测后才写回，所以这里应该仍为 NaN
+            if debug:
+                # 如果这里不是 NaN，说明这个 pos 在历史里已经被填过（或 preprocess 改写了）
+                if not pd.isna(full_df.iloc[pos][target_col]):
+                    print(f"[WARN] step={i} 当前行在预测前 target_col 已非 NaN, 可能顺序/重复写回有问题")
+
+            # 3.2 x_curr 不应有 inf
+            if debug:
+                # 1) 强制数值化
+                x_num = x_curr.apply(pd.to_numeric, errors="coerce")
+
+                # 2) 关键：把 pandas NA / 可空类型，统一变成 float numpy
+                arr = x_num.to_numpy(dtype="float64", na_value=np.nan)
+
+                # print("x_num dtypes:\n", x_num.dtypes)
+                # print("arr dtype:", arr.dtype)
+
+                has_inf = np.isinf(arr).any()
+                has_nan = np.isnan(arr).any()
+
+                if has_inf or has_nan:
+                    # 找到具体哪几列出问题
+                    bad = pd.DataFrame({
+                        "nan_cnt": np.isnan(arr).sum(axis=0),
+                        "inf_cnt": np.isinf(arr).sum(axis=0),
+                    }, index=x_num.columns)
+                    bad = bad[(bad["nan_cnt"] > 0) | (bad["inf_cnt"] > 0)].sort_values(["inf_cnt","nan_cnt"], ascending=False)
+                    print("bad cols:\n", bad)
+
+                    raise ValueError(f"step={i} x_curr 含 inf/nan, 可能写回逻辑有问题")
+
+            # —— 预测
+            y_pred = float(self.model.predict(x_curr)[0])
             preds[i] = y_pred
 
-            # 把预测写回 full_df（这样下一步 rolling/lag 会用到它）
+            # 写回（供下一步 lag/rolling 使用）
             full_df.iat[pos, full_df.columns.get_loc(target_col)] = y_pred
 
-        # 输出：用 test 的 index（record_ID）对齐
-        pred_series = pd.Series(preds, index=test_df.index, name=f"pred_{target_col}")
+            # ====== 4) 目的验证：写回是否真的“影响下一步特征” ======
+            # 简单做法：在采样点，比较“写回前后”下一行（同组下一个时间点）某些特征是否变化
+            if debug and i in sample_points:
+                g = full_df.iloc[pos][group_col]
+                t = full_df.iloc[pos][time_col]
+                x_row = x_curr.iloc[0]
 
-        return np.array(pred_series), full_df
+                debug_rows.append({
+                    "step": i,
+                    "pos": int(pos),
+                    "group": g,
+                    "time": t,
+                    "y_pred": y_pred,
+                    "x_curr_nonzero": int((x_row != 0).sum()),
+                    "x_curr_nan": int(pd.isna(x_row).sum()),
+                })
+
+            # ====== 5) 每隔 check_every 步做一次结构性检查 ======
+            if debug and (i % check_every == 0):
+                # 检查 hist_df 内部：同一 group 的 time 是否单调
+                sub = hist_df[[group_col, time_col]]
+                # 只抽最近一小段避免太慢
+                tail = sub.tail(1000)
+                bad = tail.groupby(group_col, observed=False)[time_col].apply(lambda s: not s.is_monotonic_increasing)
+                if bad.any():
+                    bad_groups = bad[bad].index.tolist()[:5]
+                    raise AssertionError(f"发现 group 内 time 非递增（示例 {bad_groups}），滚动顺序不可靠，请先排序或修正数据。")
+
+        # ====== 6) 输出对齐回 test 原 index ======
+        # 注意：我们排序 reset_index 了，所以要用 _orig_index 找回 test 原 index 顺序
+        test_orig_index = full_df.loc[test_mask, "_orig_index"].values
+        pred_series = pd.Series(preds, index=test_orig_index, name=f"pred_{target_col}")
+        print("Rolling predict completed.")
+        # 清理辅助列
+        full_df = full_df.drop(columns=["_is_train", "_orig_index"])
+
+        if debug:
+            debug_df = pd.DataFrame(debug_rows)
+            print("=== rolling debug sample ===")
+            print(debug_df)
+
+        return pred_series.values, full_df
+
         
     def build_dataframe(self, X_test, y_test, y_pred, Title, y_prob=None) -> pd.DataFrame:
         df = X_test.copy()

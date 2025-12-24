@@ -5,6 +5,7 @@ Run: python scripts/entrance.py
 """
 
 import pandas as pd
+import numpy as np
 from xgboost import XGBRegressor
 from sales_forecasting.experiment import Experiment
 from sales_forecasting.spatial_decomposition import df_after_missing_value_handling
@@ -14,8 +15,10 @@ test_path = "data/raw/test_nfcJ3J5.csv"
 target_col = "unit_solds"
 
 my_dataframe = df_after_missing_value_handling.copy()
-my_dataframe = preprocess_data(my_dataframe, target_col='units_sold', id_col='record_ID')
-my_dataframe = my_dataframe.drop(columns=['week'], errors='ignore')
+df_after_log = df_after_missing_value_handling.copy()
+df_after_log['log_sales'] = np.log1p(df_after_log['units_sold'])
+df_after_log = df_after_log.drop(columns=['units_sold'], errors='ignore')
+my_dataframe = preprocess_data(my_dataframe, target_col='units_sold', id_col='record_ID') 
 print("--- Dataframe loaded for experiment: ---")
 print(my_dataframe.head(5))
 
@@ -25,14 +28,16 @@ processor = DataProcessor(
     time_col='week', 
     test_size=0.2)
 
-X_train_false, X_test_false, y_train_false, y_test_false = processor.split(my_dataframe)
-X_train, X_test, y_train, y_test = processor.split(df_after_missing_value_handling)
+X_train_false, X_test_false, y_train_false, y_test_false = processor.split(my_dataframe) # 训练的时候用这个
+X_train, X_test, y_train, y_test = processor.split(df_after_log) # 测试的时候用这个
 
 # 验证是否y train/test 和 false 一致
 print("--- Validating train/test splits ---")
 assert y_train.equals(y_train_false), "y_train 不一致"
 assert y_test.equals(y_test_false), "y_test 不一致"
+# 理论上应该是一样的 
 
+# 超参数调优暂时不考虑
 model = XGBRegressor(
     objective="reg:squarederror",
     n_estimators=500,
@@ -50,7 +55,7 @@ exp = Experiment(
     target_col="log_sales",
     model=model,
     task_type="regression",
-    Title = "XGB_log_sales"
+    Title = "XGB_test_rolling_predict"
 )
 
 exp.run(X_train, X_test, y_train, y_test, X_train_false, y_train_false, Title = "XGB_log_sales",transform_type='log1p')

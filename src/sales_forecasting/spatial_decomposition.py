@@ -124,14 +124,14 @@ def encoding_gap_since_lag_record(df: pd.DataFrame, lag_weeks: list) -> pd.DataF
     df = df.copy()
     df = df.sort_values(by=['sku_id', 'week'])
     for lag in lag_weeks:
-        df[f'gap_since_lag_{lag}_records'] = df.groupby('sku_id')['week'].diff(lag).dt.days.fillna(0) / 7
+        df[f'gap_since_lag_{lag}_records'] = df.groupby('sku_id', observed=False)['week'].diff(lag).dt.days.fillna(0) / 7
     return df
 
 def encoding_lag_features(df: pd.DataFrame, lag_weeks: list) -> pd.DataFrame:
     df = df.copy()
     df = df.sort_values(by=['sku_id', 'week'])
     for lag in lag_weeks:
-        df[f'lag_{lag}_weeks'] = df.groupby('sku_id')['units_sold'].shift(lag)
+        df[f'lag_{lag}_weeks'] = df.groupby('sku_id', observed=False)['log_sales'].shift(lag)
     return df
 
 
@@ -140,15 +140,15 @@ def rolling_mean_std_features(df: pd.DataFrame, window_sizes: list) -> pd.DataFr
     df = df.sort_values(by=['sku_id', 'week'])
 
     for window in window_sizes:
-        hist = df.groupby('sku_id')['units_sold'].shift(1)
+        hist = df.groupby('sku_id', observed=False)['log_sales'].shift(1)
 
         df[f'rolling_mean_{window}_records'] = (
-            hist.groupby(df['sku_id'])
+            hist.groupby(df['sku_id'], observed=False)
                 .transform(lambda x: x.rolling(window, min_periods=1).mean())
         )
 
         df[f'rolling_std_{window}_records'] = (
-            hist.groupby(df['sku_id'])
+            hist.groupby(df['sku_id'], observed=False)
                 .transform(lambda x: x.rolling(window, min_periods=1).std())
                 .fillna(0)
         )
@@ -160,27 +160,27 @@ def encoding_EWMA_features(df: pd.DataFrame, spans: list) -> pd.DataFrame:
     df = df.copy()
     df = df.sort_values(by=['sku_id', 'week'])
 
-    hist = df.groupby('sku_id')['units_sold'].shift(1)
+    hist = df.groupby('sku_id', observed=False)['log_sales'].shift(1)
 
     for span in spans:
         df[f'ewma_{span}_records'] = (
-            hist.groupby(df['sku_id'])
+            hist.groupby(df['sku_id'], observed=False)
                 .transform(lambda x: x.ewm(span=span, adjust=False).mean())
         )
 
     return df
 
 
-def encoding_target_changing_rate(df: pd.DataFrame, periods: list, target_col='units_sold') -> pd.DataFrame:
+def encoding_target_changing_rate(df: pd.DataFrame, periods: list, target_col='log_sales') -> pd.DataFrame:
     df = df.copy()
     df = df.sort_values(by=['sku_id', 'week'])
 
-    hist = df.groupby('sku_id')[target_col].shift(1)  # t 时刻只能看到 t-1
+    hist = df.groupby('sku_id', observed=False)[target_col].shift(1)  # t 时刻只能看到 t-1
     for period in periods:
         # 这里的 pct_change 发生在 hist 上：相当于 (y_{t-1} - y_{t-1-period}) / y_{t-1-period}
         df[f'target_changing_rate_{period}_records'] = (
-            hist.groupby(df['sku_id'])
-                .pct_change(periods=period)
+            hist.groupby(df['sku_id'], observed=False)
+                .pct_change(periods=period, fill_method=None)
                 .fillna(0)
         )
     return df
@@ -206,23 +206,27 @@ def encoding_target_changing_rate_per_gap(
 
 
 # 聚合特征
-def week_total_units_sold_feature(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    week_total_units_sold = df.groupby('week')['units_sold'].shift(1).transform('sum')
-    df['week_total_units_sold'] = week_total_units_sold
-    return df
+# def week_total_units_sold_feature(df: pd.DataFrame) -> pd.DataFrame:
+#     df = df.copy()
+#     week_sum = df.groupby('week')['log_sales'].sum()
+#     week_sum_lag1 = week_sum.sort_index().shift(1)
+#     df['week_total_units_sold_lag1'] = df['week'].map(week_sum_lag1)
 
-def store_total_units_sold_feature(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    store_total_units_sold = df.groupby('store_id')['units_sold'].shift(1).transform('sum')
-    df['store_total_units_sold'] = store_total_units_sold
-    return df
+#     return df
 
-def sku_total_units_sold_feature(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    sku_total_units_sold = df.groupby('sku_id')['units_sold'].shift(1).transform('sum')
-    df['sku_total_units_sold'] = sku_total_units_sold
-    return df
+# def store_total_units_sold_feature(df: pd.DataFrame) -> pd.DataFrame:
+#     df = df.copy()
+#     store_sum = df.groupby('store_id', observed=False)['log_sales'].sum()
+#     store_sum_lag1 = store_sum.sort_index().shift(1)
+#     df['store_total_units_sold_lag1'] = df['store_id'].map(store_sum_lag1)
+#     return df
+
+# def sku_total_units_sold_feature(df: pd.DataFrame) -> pd.DataFrame:
+#     df = df.copy()
+#     sku_sum = df.groupby('sku_id', observed=False)['log_sales'].sum()
+#     sku_sum_lag1 = sku_sum.sort_index().shift(1)
+#     df['sku_total_units_sold_lag1'] = df['sku_id'].map(sku_sum_lag1)
+#     return df
 
 
 

@@ -28,13 +28,11 @@ class Experiment:
         runner = ModelRunner(self.model)
         runner.train(X_train_false, y_train_false)
 
-        y_pred, y_prob = runner.predict(X_test)
-        y_pred_train, y_prob_train = runner.predict(X_train)
-        Compare = runner.build_dataframe(X_test, y_test, y_pred, Title, y_prob)
+        y_pred, full_df = runner.rolling_predict(X_train,X_test, y_train)
+        Compare = runner.build_dataframe(X_test, y_test, y_pred, Title)
         evaluator = Evaluator(self.task_type)
-        metrics = evaluator.evaluate(y_test, y_pred, Title, transform_type, y_prob)
-        metrics_train = evaluator.evaluate(y_train,y_pred_train,Title, transform_type, y_prob_train)
-
+        metrics = evaluator.evaluate(y_test, y_pred, Title, transform_type)
+        
         mape_week_sku, mape_by_week, overall_mape = MAPE(
             df=Compare,
             week_col="week",
