@@ -21,12 +21,12 @@ class Experiment:
         self.task_type = task_type
         self.Title = Title
 
-    def run(self, Title,transform_type=None):
-        processor = DataProcessor(self.target_col)
-        X_train, X_test, y_train, y_test = processor.split(self.df)
+    def run(self, X_train, X_test, y_train, y_test, X_train_false, y_train_false, Title,transform_type=None):
+        # processor = DataProcessor(self.target_col)
+        # X_train, X_test, y_train, y_test = processor.split(self.df)
 
         runner = ModelRunner(self.model)
-        runner.train(X_train, y_train)
+        runner.train(X_train_false, y_train_false)
 
         y_pred, y_prob = runner.predict(X_test)
         y_pred_train, y_prob_train = runner.predict(X_train)

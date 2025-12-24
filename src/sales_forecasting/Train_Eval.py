@@ -9,6 +9,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
 from sklearn.model_selection import train_test_split
+from sales_forecasting.data_preprocess import preprocess_data
 from sales_forecasting.load_data import clear_raw_csvs
 from sklearn.metrics import roc_curve
 from sklearn.metrics import (
@@ -46,7 +47,7 @@ class DataProcessor:
         if self.time_col not in df.columns:
             raise ValueError(f"df 中找不到时间列 time_col='{self.time_col}'")
 
-        df_sorted = df.sort_values(self.time_col).reset_index(drop=True)
+        df_sorted = df.sort_values(self.time_col,'sku_id').reset_index(drop=True)
 
         n = len(df_sorted)
         n_test = int(round(n * self.test_size))
@@ -81,6 +82,55 @@ class ModelRunner:
             return self.model.predict(X), self.model.predict_proba(X)
         else:
             return self.model.predict(X), None
+    
+    def rolling_predict(self, X_train, X_test, y_train, target_col = 'log_sales', time_col='week', group_col='sku_id'): # 检查group col还应该包含哪些
+        train_X = X_train.copy()
+        test_X = X_test.copy()
+        train_y = y_train.copy()
+        train_df = train_X.copy()
+        train_df[target_col] = train_y
+
+        test_df = test_X.copy()
+        test_df[target_col] = np.nan
+        full_df = pd.concat([train_df, test_df], axis=0)
+
+        n_train = len(train_df)
+        n_test  = len(test_df)
+
+        train_feat_df = preprocess_data(train_df.copy())  
+        feature_cols = [c for c in train_feat_df.columns if c != target_col]
+        if time_col in feature_cols:
+            feature_cols.remove(time_col)
+        
+        preds = np.zeros(n_test, dtype=float)
+
+        for i in range(n_test):
+            pos = n_train + i  # full_df 里当前要预测的行位置（用 iloc，不受 record_ID index 影响）
+
+            # 取到 “截至当前行” 的子表
+            hist_df = full_df.iloc[:pos + 1].copy()
+
+            # 构造动态特征（lag/rolling/ewma等）
+            feat_hist_df = preprocess_data(hist_df)
+
+            # 取当前行的特征 X_curr，并对齐训练列 应该去除week
+            x_curr = feat_hist_df.iloc[-1][feature_cols]
+
+            x_curr = x_curr.reindex(feature_cols)
+
+            x_curr = x_curr.fillna(0.0)
+
+            # 预测
+            y_pred = float(self.model.predict(x_curr.to_frame().T)[0])
+            preds[i] = y_pred
+
+            # 把预测写回 full_df（这样下一步 rolling/lag 会用到它）
+            full_df.iat[pos, full_df.columns.get_loc(target_col)] = y_pred
+
+        # 输出：用 test 的 index（record_ID）对齐
+        pred_series = pd.Series(preds, index=test_df.index, name=f"pred_{target_col}")
+
+        return np.array(pred_series), full_df
         
     def build_dataframe(self, X_test, y_test, y_pred, Title, y_prob=None) -> pd.DataFrame:
         df = X_test.copy()

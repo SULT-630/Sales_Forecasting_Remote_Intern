@@ -135,7 +135,7 @@ def encoding_lag_features(df: pd.DataFrame, lag_weeks: list) -> pd.DataFrame:
     return df
 
 
-def rolling_mean_features(df: pd.DataFrame, window_sizes: list) -> pd.DataFrame:
+def rolling_mean_std_features(df: pd.DataFrame, window_sizes: list) -> pd.DataFrame:
     df = df.copy()
     df = df.sort_values(by=['sku_id', 'week'])
 
@@ -171,12 +171,20 @@ def encoding_EWMA_features(df: pd.DataFrame, spans: list) -> pd.DataFrame:
     return df
 
 
-def encoding_target_changing_rate(df: pd.DataFrame, periods: list) -> pd.DataFrame:
+def encoding_target_changing_rate(df: pd.DataFrame, periods: list, target_col='units_sold') -> pd.DataFrame:
     df = df.copy()
     df = df.sort_values(by=['sku_id', 'week'])
+
+    hist = df.groupby('sku_id')[target_col].shift(1)  # t 时刻只能看到 t-1
     for period in periods:
-        df[f'target_changing_rate_{period}_records'] = df.groupby('sku_id')['units_sold'].pct_change(periods=period).fillna(0)
+        # 这里的 pct_change 发生在 hist 上：相当于 (y_{t-1} - y_{t-1-period}) / y_{t-1-period}
+        df[f'target_changing_rate_{period}_records'] = (
+            hist.groupby(df['sku_id'])
+                .pct_change(periods=period)
+                .fillna(0)
+        )
     return df
+
 
 def encoding_target_changing_rate_per_gap(
     df: pd.DataFrame,
@@ -200,19 +208,19 @@ def encoding_target_changing_rate_per_gap(
 # 聚合特征
 def week_total_units_sold_feature(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
-    week_total_units_sold = df.groupby('week')['units_sold'].transform('sum')
+    week_total_units_sold = df.groupby('week')['units_sold'].shift(1).transform('sum')
     df['week_total_units_sold'] = week_total_units_sold
     return df
 
 def store_total_units_sold_feature(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
-    store_total_units_sold = df.groupby('store_id')['units_sold'].transform('sum')
+    store_total_units_sold = df.groupby('store_id')['units_sold'].shift(1).transform('sum')
     df['store_total_units_sold'] = store_total_units_sold
     return df
 
 def sku_total_units_sold_feature(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
-    sku_total_units_sold = df.groupby('sku_id')['units_sold'].transform('sum')
+    sku_total_units_sold = df.groupby('sku_id')['units_sold'].shift(1).transform('sum')
     df['sku_total_units_sold'] = sku_total_units_sold
     return df
 
