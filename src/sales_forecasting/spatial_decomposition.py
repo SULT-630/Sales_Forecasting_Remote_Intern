@@ -79,8 +79,8 @@ def depict_mixed_and_seperate_sku_sales_curve(df: pd.DataFrame) -> None:
 # 特征工程和时间编码等
 def encoding_year_month_quarter(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
-    df['year'] = df['week'].dt.year
-    df['month'] = df['week'].dt.month
+    # df['year'] = df['week'].dt.year
+    # df['month'] = df['week'].dt.month
     df['quarter'] = df['week'].dt.quarter
     return df
 
@@ -103,20 +103,27 @@ def encoding_is_quarter_start_end(df: pd.DataFrame) -> pd.DataFrame:
 
 def encoding_sin_cos_week_of_year(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
+    df['week_of_year'] = df['week'].dt.isocalendar().week
     df['sin_week_of_year'] = np.sin(2 * np.pi * df['week_of_year'] / 52)
     df['cos_week_of_year'] = np.cos(2 * np.pi * df['week_of_year'] / 52)
+    df.drop(columns=['week_of_year'], inplace=True)
     return df
 
 def encoding_sin_cos_month(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
+    df['month'] = df['week'].dt.month
     df['sin_month'] = np.sin(2 * np.pi * df['month'] / 12)
-    df['cos_month'] = np.cos(2 * np.pi * df['month'] / 12)
+    df['cos_month'] = np.cos(2 * np.pi * df['month'] / 12)    
+    df.drop(columns=['month'], inplace=True)
     return df
 
 # 调用的时候注意
-def encoding_week_from_start(df: pd.DataFrame, start_date: pd.Timestamp) -> pd.DataFrame:
+def encoding_sin_cos_week_from_start(df: pd.DataFrame, start_date: pd.Timestamp) -> pd.DataFrame:
     df = df.copy()
     df['week_from_start'] = (df['week'] - start_date).dt.days // 7
+    df['sin_week_from_start'] = np.sin(2 * np.pi * df['week_from_start'] / 52)
+    df['cos_week_from_start'] = np.cos(2 * np.pi * df['week_from_start'] / 52)
+    df.drop(columns=['week_from_start'], inplace=True)
     return df
 
 # 检查是否正确
@@ -193,6 +200,7 @@ def encoding_target_changing_rate_per_gap(
     eps: float = 1e-6
 ) -> pd.DataFrame:
     df = df.copy()
+    df = encoding_target_changing_rate(df, periods=periods)
     for k in periods:
         gap_col = gap_col_template.format(k=k)
         if gap_col not in df.columns:
@@ -202,6 +210,7 @@ def encoding_target_changing_rate_per_gap(
             df[f'target_changing_rate_{k}_records'] /
             (df[gap_col] + eps)
         )
+    df.drop(columns=[f'target_changing_rate_{k}_records' for k in periods], inplace=True)
     return df
 
 

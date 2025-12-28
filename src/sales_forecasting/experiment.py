@@ -28,7 +28,8 @@ class Experiment:
         runner = ModelRunner(self.model)
         runner.train(X_train_false, y_train_false)
 
-        y_pred, full_df = runner.rolling_predict(X_train,X_test, y_train)
+        # y_pred, full_df = runner.rolling_predict(X_train,X_test, y_train)
+        y_pred, y_prob = runner.predict(X_test)
         Compare = runner.build_dataframe(X_test, y_test, y_pred, Title)
         evaluator = Evaluator(self.task_type)
         metrics = evaluator.evaluate(y_test, y_pred, Title, transform_type)
@@ -36,6 +37,7 @@ class Experiment:
         mape_week_sku, mape_by_week, overall_mape = MAPE(
             df=Compare,
             week_col="week",
+            Title=Title,
             sku_col="sku_id",
             y_true_col="Y_true",
             y_pred_col="Y_pred",
@@ -44,8 +46,12 @@ class Experiment:
         print(f"\n{overall_mape:.4f}")
         print(f"--- MAPE by week : ---")
         print(f"\n{mape_by_week}")
-        print(f"--- MAPE by (week, sku) : ---")
-        print(f"\n{mape_week_sku}")
+        print(f"--- MAPE by (week, sku) top 20: ---")
+        print(
+            mape_week_sku
+            .sort_values("mape_week_sku", ascending=False)
+            .head(20)
+        )
 
         if self.task_type == "regression":
             Visualizer.plot_regression(y_test, y_pred, Title)

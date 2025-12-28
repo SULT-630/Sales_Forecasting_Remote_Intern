@@ -22,6 +22,11 @@ my_dataframe = preprocess_data(my_dataframe, target_col='units_sold', id_col='re
 print("--- Dataframe loaded for experiment: ---")
 print(my_dataframe.head(5))
 
+df_sorted = my_dataframe.sort_values("week")
+print("--- First weeks: ---")
+print(df_sorted.head())
+
+
 processor = DataProcessor(
     target_col='log_sales', 
     id_col='record_ID', 
@@ -55,7 +60,8 @@ exp = Experiment(
     target_col="log_sales",
     model=model,
     task_type="regression",
-    Title = "XGB_test_rolling_predict"
+    Title = None
 )
 
-exp.run(X_train, X_test, y_train, y_test, X_train_false, y_train_false, Title = "XGB_log_sales",transform_type='log1p')
+# exp.run(X_train, X_test, y_train, y_test, X_train_false, y_train_false, Title = "XGB_log_sales",transform_type='log1p') #真实的rolling predict
+exp.run(X_train_false, X_test_false, y_train_false, y_test_false, X_train_false, y_train_false, Title = "XGB_log_sales_champion-target_changing_rate",transform_type='log1p')

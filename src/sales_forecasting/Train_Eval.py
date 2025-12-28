@@ -375,6 +375,7 @@ def GROUPED_MAPE(group: pd.DataFrame, true_col: str, pred_col: str) -> float:
 
 def MAPE(
     df: pd.DataFrame,
+    Title: str,
     week_col: str,
     sku_col: str,
     y_true_col: str,
@@ -404,15 +405,15 @@ def MAPE(
     plt.plot(mape_by_week[week_col], mape_by_week["mape_by_week"], marker="o")
     plt.xlabel(week_col)
     plt.ylabel("MAPE")
-    plt.title("MAPE over time (averaged across sku)")
+    plt.title(f"{Title} MAPE over time (averaged across sku)")
     plt.xticks(rotation=45)
     plt.tight_layout()
     plt.grid(True)
-    MAPE_fig_path = FIG_DIR / f"MAPE_Time_curve.png"
-    clear_raw_csvs(FIG_DIR, patterns=[f"MAPE_Time_curve.png"])
+    MAPE_fig_path = FIG_DIR / f"{Title}_MAPE_Time_curve.png"
+    clear_raw_csvs(FIG_DIR, patterns=[f"{Title}_MAPE_Time_curve.png"])
     plt.savefig(MAPE_fig_path, dpi=150, bbox_inches="tight")
     plt.close()
-    print(f"Saved MAPE time sequence curve to: {MAPE_fig_path}")
+    print(f"Saved {Title} MAPE time sequence curve to: {MAPE_fig_path}")
 
     # --- Step 4: 总 MAPE（对 week 平均）---
     overall_mape = mape_by_week["mape_by_week"].mean()
