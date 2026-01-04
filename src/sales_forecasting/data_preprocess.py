@@ -20,7 +20,10 @@ from sales_forecasting.spatial_decomposition import rolling_mean_std_features
 from sales_forecasting.spatial_decomposition import encoding_EWMA_features
 from sales_forecasting.spatial_decomposition import encoding_target_changing_rate
 from sales_forecasting.spatial_decomposition import encoding_target_changing_rate_per_gap
-# from sales_forecasting.spatial_decomposition import week_total_units_sold_feature
+from sales_forecasting.spatial_decomposition import lag_is_feature_and_display
+from sales_forecasting.spatial_decomposition import price_change_ratio_feature
+from sales_forecasting.spatial_decomposition import week_total_units_sold_lag1_from_log
+from sales_forecasting.spatial_decomposition import store_week_total_units_sold_lag1_from_log
 # from sales_forecasting.spatial_decomposition import store_total_units_sold_feature
 # from sales_forecasting.spatial_decomposition import sku_total_units_sold_feature
 
@@ -51,7 +54,11 @@ def preprocess_data(df: pd.DataFrame, target_col: str, id_col: str = "record_ID"
     # df = encoding_target_changing_rate(df, periods=[1,2,4]) 
     df = encoding_target_changing_rate_per_gap(df, periods=[1]) 
 
-    # df = week_total_units_sold_feature(df) 
+    # df = lag_is_feature_and_display(df)
+    # df = price_change_ratio_feature(df, price_col='base_price')
+    df = price_change_ratio_feature(df, price_col='total_price')
+    # df = week_total_units_sold_lag1_from_log(df) 
+    # df = store_week_total_units_sold_lag1_from_log(df)
     # df = store_total_units_sold_feature(df) 
     # df = sku_total_units_sold_feature(df) 
     return df

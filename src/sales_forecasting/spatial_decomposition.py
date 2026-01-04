@@ -251,15 +251,74 @@ def lag_is_feature_and_display(df: pd.DataFrame, is_col: list = ['is_featured_sk
     df = df.sort_values(by=['sku_id','store_id', 'week'])
     for col in is_col:
         df[f'{col}_lag_1_weeks'] = df.groupby(['sku_id','store_id'], observed=False)[col].shift(1)
+        df[f'{col}_lag_1_weeks'] = df[f'{col}_lag_1_weeks'].fillna(0)
+    return df
+
+def price_change_ratio_feature(df: pd.DataFrame, price_col: str = 'base_price') -> pd.DataFrame:
+    df = df.copy()
+    df = df.sort_values(by=['sku_id','store_id', 'week'])
+    lag_price = df.groupby(['sku_id','store_id'], observed=False)[price_col].shift(1)
+
+    df[f'{price_col}_change_ratio'] = (df[price_col] - lag_price) / (lag_price + 1e-6)
+    df[f'{price_col}_change_ratio'] = df[f'{price_col}_change_ratio'].fillna(0)
     return df
 # 聚合特征
-# def week_total_units_sold_feature(df: pd.DataFrame) -> pd.DataFrame:
-#     df = df.copy()
-#     week_sum = df.groupby('week')['log_sales'].sum()
-#     week_sum_lag1 = week_sum.sort_index().shift(1)
-#     df['week_total_units_sold_lag1'] = df['week'].map(week_sum_lag1)
+def week_total_units_sold_lag1_from_log(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
 
-#     return df
+    # 1️⃣ 逆变换：log_sales → units_sold
+    units = np.expm1(df['log_sales'])
+
+    # 2️⃣ 按 week 汇总真实销量
+    week_units_sum = units.groupby(df['week']).sum()
+
+    # 3️⃣ 上一周（lag = 1）
+    week_units_sum_lag1 = week_units_sum.sort_index().shift(1)
+
+    # 4️⃣ 映射回每一行
+    df['week_total_units_sold_lag1'] = df['week'].map(week_units_sum_lag1)
+
+    # 5️⃣ 再 log（保持数值尺度一致）
+    df['week_total_units_sold_lag1'] = (
+        np.log1p(df['week_total_units_sold_lag1'].fillna(0))
+    )
+
+    return df
+
+def store_week_total_units_sold_lag1_from_log(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+
+    # 1️⃣ log → units（真实销量）
+    units = np.expm1(df['log_sales'])
+
+    # 2️⃣ 按 (store_id, week) 汇总真实销量
+    store_week_units_sum = (
+        units.groupby([df['store_id'], df['week']]).sum()
+    )
+
+    # 3️⃣ 对每个 store，按 week 排序后取 lag=1
+    store_week_units_sum_lag1 = (
+        store_week_units_sum
+        .sort_index(level='week')
+        .groupby(level='store_id')
+        .shift(1)
+    )
+
+    # 4️⃣ 映射回原 df
+    df['store_week_total_units_sold_lag1'] = list(
+        zip(df['store_id'], df['week'])
+    )
+    df['store_week_total_units_sold_lag1'] = (
+        df['store_week_total_units_sold_lag1']
+        .map(store_week_units_sum_lag1)
+    )
+
+    # 5️⃣ 缺失处理 + 再 log
+    df['store_week_total_units_sold_lag1'] = (
+        np.log1p(df['store_week_total_units_sold_lag1'].fillna(0))
+    )
+
+    return df
 
 # def store_total_units_sold_feature(df: pd.DataFrame) -> pd.DataFrame:
 #     df = df.copy()
