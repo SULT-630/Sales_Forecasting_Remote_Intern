@@ -21,6 +21,8 @@ df_after_log = df_after_log.drop(columns=['units_sold'], errors='ignore')
 my_dataframe = preprocess_data(my_dataframe, target_col='units_sold', id_col='record_ID') 
 print("--- Dataframe loaded for experiment: ---")
 print(my_dataframe.head(5))
+print("--- Checking multiple lines for same (store_id, sku_id, week): ---")
+print(my_dataframe.groupby(['sku_id','store_id','week']).size().max())  # should be 1
 
 
 processor = DataProcessor(

@@ -76,6 +76,30 @@ def depict_mixed_and_seperate_sku_sales_curve(df: pd.DataFrame) -> None:
         plt.close()
         print(f"Saved SKU sales curve to: {sku_sales_fig_path}")
 
+def check_conflicts_same_week(df: pd.DataFrame, week_col="week") -> pd.DataFrame:
+    # week 统一成日期/周标识（如果 week 已经是周起始日 datetime，这句也安全）
+    w = pd.to_datetime(df[week_col], errors="coerce")
+    if w.isna().any():
+        bad = df.loc[w.isna(), week_col].head(5).tolist()
+        raise ValueError(f"{week_col} 存在无法解析的值(示例前5个):{bad}")
+    df = df.copy()
+    df[week_col] = w
+
+    key_cols = ["store_id", "sku_id", week_col]
+    other_cols = [c for c in df.columns if c not in key_cols]
+
+    # 对每个 key，统计 other_cols 的唯一“行模式”数量
+    pattern_cnt = (
+        df.groupby(key_cols)[other_cols]
+          .nunique(dropna=False)          # 每列的 unique 数
+    )
+
+    # 只要有任意一列 unique>1，就说明同 key 下 other_cols 不一致
+    conflict_mask = (pattern_cnt > 1).any(axis=1)
+    conflict_keys = pattern_cnt[conflict_mask].reset_index()
+
+    return conflict_keys
+
 # 特征工程和时间编码等
 def encoding_year_month_quarter(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
@@ -129,33 +153,33 @@ def encoding_sin_cos_week_from_start(df: pd.DataFrame, start_date: pd.Timestamp)
 # 检查是否正确
 def encoding_gap_since_lag_record(df: pd.DataFrame, lag_weeks: list) -> pd.DataFrame:
     df = df.copy()
-    df = df.sort_values(by=['sku_id', 'week'])
+    df = df.sort_values(by=['sku_id','store_id','week'])
     for lag in lag_weeks:
-        df[f'gap_since_lag_{lag}_records'] = df.groupby('sku_id', observed=False)['week'].diff(lag).dt.days.fillna(0) / 7
+        df[f'gap_since_lag_{lag}_records'] = df.groupby(['sku_id','store_id'], observed=False)['week'].diff(lag).dt.days.fillna(0) / 7
     return df
 
 def encoding_lag_features(df: pd.DataFrame, lag_weeks: list) -> pd.DataFrame:
     df = df.copy()
-    df = df.sort_values(by=['sku_id', 'week'])
+    df = df.sort_values(by=['sku_id','store_id', 'week'])
     for lag in lag_weeks:
-        df[f'lag_{lag}_weeks'] = df.groupby('sku_id', observed=False)['log_sales'].shift(lag)
+        df[f'lag_{lag}_weeks'] = df.groupby(['sku_id','store_id'], observed=False)['log_sales'].shift(lag)
     return df
 
 
 def rolling_mean_std_features(df: pd.DataFrame, window_sizes: list) -> pd.DataFrame:
     df = df.copy()
-    df = df.sort_values(by=['sku_id', 'week'])
+    df = df.sort_values(by=['sku_id','store_id', 'week'])
 
     for window in window_sizes:
-        hist = df.groupby('sku_id', observed=False)['log_sales'].shift(1)
+        hist = df.groupby(['sku_id','store_id'], observed=False)['log_sales'].shift(1)
 
         df[f'rolling_mean_{window}_records'] = (
-            hist.groupby(df['sku_id'], observed=False)
+            hist.groupby([df['sku_id'], df['store_id']], observed=False)
                 .transform(lambda x: x.rolling(window, min_periods=1).mean())
         )
 
         df[f'rolling_std_{window}_records'] = (
-            hist.groupby(df['sku_id'], observed=False)
+            hist.groupby([df['sku_id'], df['store_id']], observed=False)
                 .transform(lambda x: x.rolling(window, min_periods=1).std())
                 .fillna(0)
         )
@@ -165,13 +189,13 @@ def rolling_mean_std_features(df: pd.DataFrame, window_sizes: list) -> pd.DataFr
 
 def encoding_EWMA_features(df: pd.DataFrame, spans: list) -> pd.DataFrame:
     df = df.copy()
-    df = df.sort_values(by=['sku_id', 'week'])
+    df = df.sort_values(by=['sku_id','store_id', 'week'])
 
-    hist = df.groupby('sku_id', observed=False)['log_sales'].shift(1)
+    hist = df.groupby(['sku_id','store_id'], observed=False)['log_sales'].shift(1)
 
     for span in spans:
         df[f'ewma_{span}_records'] = (
-            hist.groupby(df['sku_id'], observed=False)
+            hist.groupby([df['sku_id'], df['store_id']], observed=False)
                 .transform(lambda x: x.ewm(span=span, adjust=False).mean())
         )
 
@@ -180,13 +204,13 @@ def encoding_EWMA_features(df: pd.DataFrame, spans: list) -> pd.DataFrame:
 
 def encoding_target_changing_rate(df: pd.DataFrame, periods: list, target_col='log_sales') -> pd.DataFrame:
     df = df.copy()
-    df = df.sort_values(by=['sku_id', 'week'])
+    df = df.sort_values(by=['sku_id','store_id', 'week'])
 
-    hist = df.groupby('sku_id', observed=False)[target_col].shift(1)  # t 时刻只能看到 t-1
+    hist = df.groupby(['sku_id','store_id'], observed=False)['log_sales'].shift(1)
     for period in periods:
         # 这里的 pct_change 发生在 hist 上：相当于 (y_{t-1} - y_{t-1-period}) / y_{t-1-period}
         df[f'target_changing_rate_{period}_records'] = (
-            hist.groupby(df['sku_id'], observed=False)
+            hist.groupby([df['sku_id'], df['store_id']], observed=False)
                 .pct_change(periods=period, fill_method=None)
                 .fillna(0)
         )
@@ -243,6 +267,15 @@ def main():
     print(cleaned_df.head())
     print("Spatial decomposition module executed successfully.")
     depict_mixed_and_seperate_sku_sales_curve(cleaned_df)
+    
 
 if __name__ == "__main__":
     main()
+
+# conflicts = check_conflicts_same_week(cleaned_df)
+# print("\n--- Checking Physical Item representation ---")
+# if conflicts.empty:
+#     print("No conflicts found for the same (store_id, sku_id, week).")
+# else:
+#     print("Conflicts found for the same (store_id, sku_id, week):")
+#     print(conflicts)

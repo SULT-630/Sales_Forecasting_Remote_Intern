@@ -49,7 +49,7 @@ class Experiment:
         print(f"\n{overall_mape:.4f}")
         print(f"--- MAPE by week : ---")
         print(f"\n{mape_by_week}")
-        print(f"--- MAPE by (week, sku) top 20: ---")
+        print(f"--- MAPE by (week, sku) top 10: ---")
         print(
             mape_week_sku
             .sort_values("mape_week_sku", ascending=False)
