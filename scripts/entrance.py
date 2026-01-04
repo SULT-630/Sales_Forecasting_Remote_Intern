@@ -33,14 +33,8 @@ processor = DataProcessor(
     time_col='week', 
     test_size=0.2)
 
-X_train_false, X_test_false, y_train_false, y_test_false = processor.split(my_dataframe) # 训练的时候用这个
-X_train, X_test, y_train, y_test = processor.split(df_after_log) # 测试的时候用这个
+X_train, X_test, y_train, y_test = processor.split_lastweek(my_dataframe) # 训练的时候用这个
 
-# 验证是否y train/test 和 false 一致
-print("--- Validating train/test splits ---")
-assert y_train.equals(y_train_false), "y_train 不一致"
-assert y_test.equals(y_test_false), "y_test 不一致"
-# 理论上应该是一样的 
 
 # 超参数调优暂时不考虑
 model = XGBRegressor(
@@ -64,4 +58,4 @@ exp = Experiment(
 )
 
 # exp.run(X_train, X_test, y_train, y_test, X_train_false, y_train_false, Title = "XGB_log_sales",transform_type='log1p') #真实的rolling predict
-exp.run(X_train_false, X_test_false, y_train_false, y_test_false, X_train_false, y_train_false, Title = "XGB_log_sales_champion-target_changing_rate",transform_type='log1p')
+exp.run(X_train, X_test, y_train, y_test, Title = "XGB_log_sales_test_raw",transform_type='log1p')

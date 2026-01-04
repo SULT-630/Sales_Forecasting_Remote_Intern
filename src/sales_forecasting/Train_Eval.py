@@ -19,8 +19,8 @@ from sklearn.metrics import (
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-FIG_DIR = PROJECT_ROOT / "artifacts" / "figures" / "Model_evaluation"
-METRIC_DIR = PROJECT_ROOT / "artifacts" / "metrics" / "Model_evaluation"
+FIG_DIR = PROJECT_ROOT / "artifacts" / "figures" / "Model_evaluation_lastweek"
+METRIC_DIR = PROJECT_ROOT / "artifacts" / "metrics" / "Model_evaluation_lastweek"
 FIG_DIR.mkdir(parents=True, exist_ok=True)
 METRIC_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -61,8 +61,38 @@ class DataProcessor:
 
         X_train, y_train = self.get_Xy(train_df)
         X_test,  y_test  = self.get_Xy(test_df)
-
+        # print(X_test.tail())
         return X_train, X_test, y_train, y_test
+    
+    def split_lastweek(self, df: pd.DataFrame):
+        if self.time_col not in df.columns:
+            raise ValueError(f"df 中找不到时间列 time_col='{self.time_col}'")
+
+        df_sorted = df.sort_values(by=[self.time_col, 'sku_id']).reset_index(drop=True)
+
+        # 关键：确保时间列可比较（如果已经是 datetime，这句不会破坏）
+        time_series = pd.to_datetime(df_sorted[self.time_col], errors="coerce")
+        if time_series.isna().any():
+            bad = df_sorted.loc[time_series.isna(), self.time_col].head(5).tolist()
+            raise ValueError(f"时间列 {self.time_col} 存在无法解析的值(示例前5个):{bad}")
+
+        max_time = time_series.max()
+
+        test_mask = time_series.eq(max_time)
+        test_df = df_sorted.loc[test_mask].copy()
+        train_df = df_sorted.loc[~test_mask].copy()
+
+        if len(test_df) == 0:
+            raise ValueError("未能切出测试集(max_time 对应的数据为空)。")
+        if len(train_df) == 0:
+            raise ValueError("训练集为空：所有数据都在最后一个时间点上。")
+
+        X_train, y_train = self.get_Xy(train_df)
+        X_test,  y_test  = self.get_Xy(test_df)
+        print(X_test.head())
+        print(X_test[self.time_col].unique())
+        return X_train, X_test, y_train, y_test
+
     
 class ModelRunner:
     def __init__(self, model):
