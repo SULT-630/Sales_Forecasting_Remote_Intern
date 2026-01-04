@@ -102,12 +102,18 @@ class ModelRunner:
         X=X_train.copy()
         if "week" in X.columns:
             X = X.drop(columns=["week"])
+        print("--- Training on data: ---")
+        print(X.head())
+        print("--- Training target: ---")
+        print(y_train.head())
         self.model.fit(X, y_train)
 
     def predict(self, X_test):
         X = X_test.copy()
         if "week" in X.columns:
             X = X.drop(columns=["week"])
+        print("--- Predicting on data: ---")
+        print(X.head())
         if hasattr(self.model, "predict_proba"):
             return self.model.predict(X), self.model.predict_proba(X)
         else:
@@ -392,6 +398,32 @@ class Evaluator:
         print(metrics)
 
         return metrics
+    def get_xgb_feature_importance(self, model, feature_names, Title, importance_type="gain"):
+        """
+        importance_type:
+            - 'gain'   : 分裂带来的平均增益（最常用、最有意义）
+            - 'weight' : 特征被用来分裂的次数
+            - 'cover'  : 覆盖的样本数
+        """
+        booster = model.get_booster()
+        score = booster.get_score(importance_type=importance_type)
+
+        fi = (
+            pd.DataFrame(
+                score.items(),
+                columns=["feature", "importance"]
+            )
+            .assign(feature=lambda df: df["feature"].map(
+                dict(zip(booster.feature_names, feature_names))
+            ))
+            .sort_values("importance", ascending=False)
+            .reset_index(drop=True)
+        )
+        clear_raw_csvs(METRIC_DIR, patterns=[f"{Title}_Feature_Importance.csv"])
+        path = METRIC_DIR / f"{Title}_Feature_Importance.csv"
+        fi.to_csv(path, index=True)
+        print(f"\nSaved {Title} Feature importance dataframe to: {path}")
+        return fi
     
 
 def GROUPED_MAPE(group: pd.DataFrame, true_col: str, pred_col: str) -> float:
@@ -430,20 +462,20 @@ def MAPE(
     if sort_week:
         mape_by_week = mape_by_week.sort_values(by=week_col).reset_index(drop=True)
 
-    # --- Step 3: 画时间序列图 ---
-    plt.figure()
-    plt.plot(mape_by_week[week_col], mape_by_week["mape_by_week"], marker="o")
-    plt.xlabel(week_col)
-    plt.ylabel("MAPE")
-    plt.title(f"{Title} MAPE over time (averaged across sku)")
-    plt.xticks(rotation=45)
-    plt.tight_layout()
-    plt.grid(True)
-    MAPE_fig_path = FIG_DIR / f"{Title}_MAPE_Time_curve.png"
-    clear_raw_csvs(FIG_DIR, patterns=[f"{Title}_MAPE_Time_curve.png"])
-    plt.savefig(MAPE_fig_path, dpi=150, bbox_inches="tight")
-    plt.close()
-    print(f"Saved {Title} MAPE time sequence curve to: {MAPE_fig_path}")
+    # # --- Step 3: 画时间序列图 ---
+    # plt.figure()
+    # plt.plot(mape_by_week[week_col], mape_by_week["mape_by_week"], marker="o")
+    # plt.xlabel(week_col)
+    # plt.ylabel("MAPE")
+    # plt.title(f"{Title} MAPE over time (averaged across sku)")
+    # plt.xticks(rotation=45)
+    # plt.tight_layout()
+    # plt.grid(True)
+    # MAPE_fig_path = FIG_DIR / f"{Title}_MAPE_Time_curve.png"
+    # clear_raw_csvs(FIG_DIR, patterns=[f"{Title}_MAPE_Time_curve.png"])
+    # plt.savefig(MAPE_fig_path, dpi=150, bbox_inches="tight")
+    # plt.close()
+    # print(f"Saved {Title} MAPE time sequence curve to: {MAPE_fig_path}")
 
     # --- Step 4: 总 MAPE（对 week 平均）---
     overall_mape = mape_by_week["mape_by_week"].mean()

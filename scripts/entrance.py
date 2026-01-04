@@ -22,10 +22,6 @@ my_dataframe = preprocess_data(my_dataframe, target_col='units_sold', id_col='re
 print("--- Dataframe loaded for experiment: ---")
 print(my_dataframe.head(5))
 
-df_sorted = my_dataframe.sort_values("week")
-print("--- First weeks: ---")
-print(df_sorted.head())
-
 
 processor = DataProcessor(
     target_col='log_sales', 

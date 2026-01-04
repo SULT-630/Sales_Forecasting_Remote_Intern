@@ -32,6 +32,9 @@ class Experiment:
         y_pred, y_prob = runner.predict(X_test)
         Compare = runner.build_dataframe(X_test, y_test, y_pred, Title)
         evaluator = Evaluator(self.task_type)
+        feature_names = X_test.columns
+        feature_names = feature_names.drop("week", errors="ignore")
+        fi = evaluator.get_xgb_feature_importance(self.model, feature_names, Title)
         metrics = evaluator.evaluate(y_test, y_pred, Title, transform_type)
         
         mape_week_sku, mape_by_week, overall_mape = MAPE(
@@ -50,8 +53,10 @@ class Experiment:
         print(
             mape_week_sku
             .sort_values("mape_week_sku", ascending=False)
-            .head(20)
+            .head(10)
         )
+        print(f"--- Feature importance: ---")
+        print(fi)
 
         if self.task_type == "regression":
             Visualizer.plot_regression(y_test, y_pred, Title)
