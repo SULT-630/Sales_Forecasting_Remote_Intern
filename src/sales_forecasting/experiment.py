@@ -30,7 +30,9 @@ class Experiment:
 
         # y_pred, full_df = runner.rolling_predict(X_train,X_test, y_train)
         y_pred, y_prob = runner.predict(X_test)
+        y_pred_train, y_prob_train = runner.predict(X_train)
         Compare = runner.build_dataframe(X_test, y_test, y_pred, Title)
+        Compare_train = runner.build_dataframe(X_train, y_train, y_pred_train, Title + "_train")
         evaluator = Evaluator(self.task_type)
         feature_names = X_test.columns
         feature_names = feature_names.drop("week", errors="ignore")
@@ -52,6 +54,24 @@ class Experiment:
         print(f"--- MAPE by (week, sku) top 10: ---")
         print(
             mape_week_sku
+            .sort_values("mape_week_sku", ascending=False)
+            .head(10)
+        )
+        mape_week_sku_train, mape_by_week_train, overall_mape_train = MAPE(
+            df=Compare_train,
+            week_col="week",
+            Title=Title + "_train",
+            sku_col="sku_id",
+            y_true_col="Y_true",
+            y_pred_col="Y_pred",
+        )
+        print(f"--- Overall MAPE Train (by week & sku) :  ---")
+        print(f"\n{overall_mape_train:.4f}")
+        print(f"--- MAPE by week Train : ---")
+        print(f"\n{mape_by_week_train}")
+        print(f"--- MAPE by (week, sku) top 10 Train: ---")
+        print(
+            mape_week_sku_train
             .sort_values("mape_week_sku", ascending=False)
             .head(10)
         )
