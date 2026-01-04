@@ -34,16 +34,21 @@ processor = DataProcessor(
 X_train, X_test, y_train, y_test = processor.split_lastweek(my_dataframe) # 训练的时候用这个
 
 
-# 超参数调优暂时不考虑
 model = XGBRegressor(
     objective="reg:squarederror",
-    n_estimators=500,
+    n_estimators=5000,
     learning_rate=0.05,
     max_depth=8,
+    min_child_weight=10,
+    eval_metric='mape',
     subsample=0.8,
     colsample_bytree=0.8,
+    reg_alpha=1.0,
+    reg_lambda=8.0,
+    tree_method='hist',
     random_state=42,
     n_jobs=-1,
+    early_stopping_rounds=50,
     enable_categorical=True
 )
 

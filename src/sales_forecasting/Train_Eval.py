@@ -95,18 +95,40 @@ class DataProcessor:
 
     
 class ModelRunner:
-    def __init__(self, model):
+    def __init__(self, model, best_n=None):
         self.model = model
+        self.best_n = best_n
 
     def train(self, X_train, y_train):
         X=X_train.copy()
-        if "week" in X.columns:
-            X = X.drop(columns=["week"])
+        X["log_sales"] = y_train.values
+        df = X.sort_values(by=['week'])#.reset_index(drop=True)
+        unique_weeks = df['week'].drop_duplicates().sort_values()
+        valid_weeks = unique_weeks.iloc[-2:]
+
+        is_valid = df['week'].isin(valid_weeks)
+        df_valid = df[is_valid]
+        df_train = df[~is_valid]
+        X_train_new = df_train.drop(columns="log_sales")
+        y_train_new = df_train["log_sales"]
+        X_valid = df_valid.drop(columns="log_sales")
+        y_valid = df_valid["log_sales"]
+
+        if "week" in X_train_new.columns:
+            X_train_new_no_week = X_train_new.drop(columns=["week"])
+        if "week" in X_valid.columns:
+            X_valid_no_week = X_valid.drop(columns=["week"])
+
         print("--- Training on data: ---")
-        print(X.head())
+        print(X_train_new.head())
         print("--- Training target: ---")
-        print(y_train.head())
-        self.model.fit(X, y_train)
+        print(y_train_new.head())
+        self.model.fit(X_train_new_no_week, y_train_new,eval_set=[(X_valid_no_week, y_valid)], verbose=100)
+        print("--- Finding best iteration: ---")
+        print("Best iteration:", self.model.best_iteration)
+        self.best_n = self.model.best_iteration+1
+        
+        return X_train_new, y_train_new, X_valid, y_valid
 
     def predict(self, X_test):
         X = X_test.copy()
@@ -115,9 +137,9 @@ class ModelRunner:
         print("--- Predicting on data: ---")
         print(X.head())
         if hasattr(self.model, "predict_proba"):
-            return self.model.predict(X), self.model.predict_proba(X)
+            return self.model.predict(X, iteration_range=(0, self.best_n)), self.model.predict_proba(X)
         else:
-            return self.model.predict(X), None
+            return self.model.predict(X, iteration_range=(0, self.best_n)), None
     
     # def rolling_predict(self, X_train, X_test, y_train, target_col = 'log_sales', time_col='week', group_col='sku_id'): # 检查group col还应该包含哪些
     #     train_X = X_train.copy()
