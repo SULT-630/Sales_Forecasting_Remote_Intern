@@ -60,11 +60,11 @@ X_test.drop(columns=['discount_ratio'], errors='ignore', inplace=True)
 X_train.drop(columns=['discount_ratio'], errors='ignore', inplace=True)
 
 # 去除is discount的测试
-X_test.drop(columns=['is_discount_sku'], errors='ignore', inplace=True)
-X_train.drop(columns=['is_discount_sku'], errors='ignore', inplace=True)
+# X_test.drop(columns=['is_discount_sku'], errors='ignore', inplace=True)
+# X_train.drop(columns=['is_discount_sku'], errors='ignore', inplace=True)
 
 # 去除base price的测试
 # X_test.drop(columns=['base_price'], errors='ignore', inplace=True)
 # X_train.drop(columns=['base_price'], errors='ignore', inplace=True)
 # exp.run(X_train, X_test, y_train, y_test, X_train_false, y_train_false, Title = "XGB_log_sales",transform_type='log1p') #真实的rolling predict
-exp.run(X_train, X_test, y_train, y_test, Title = "XGB_log_sales_base",transform_type='log1p')
+exp.run(X_train, X_test, y_train, y_test, Title = "XGB_log_sales_test",transform_type='log1p')

@@ -164,6 +164,7 @@ def encoding_lag_features(df: pd.DataFrame, lag_weeks: list) -> pd.DataFrame:
     df = df.sort_values(by=['sku_id','store_id', 'week'])
     for lag in lag_weeks:
         df[f'lag_{lag}_weeks'] = df.groupby(['sku_id','store_id'], observed=False)['log_sales'].shift(lag)
+        df[f'lag_{lag}_weeks'] = df[f'lag_{lag}_weeks'].fillna(0)
     return df
 
 
@@ -199,6 +200,7 @@ def encoding_EWMA_features(df: pd.DataFrame, spans: list) -> pd.DataFrame:
             hist.groupby([df['sku_id'], df['store_id']], observed=False)
                 .transform(lambda x: x.ewm(span=span, adjust=False).mean())
         )
+        df[f'ewma_{span}_records'] = df[f'ewma_{span}_records'].fillna(0)
 
     return df
 
@@ -243,7 +245,13 @@ def encoding_target_changing_rate_per_gap(
     df.drop(columns=[f'target_changing_rate_{k}_records' for k in periods], inplace=True)
     return df
 
-
+# extra
+def lag_is_feature_and_display(df: pd.DataFrame, is_col: list = ['is_featured_sku','is_display_sku']) -> pd.DataFrame:
+    df = df.copy()
+    df = df.sort_values(by=['sku_id','store_id', 'week'])
+    for col in is_col:
+        df[f'{col}_lag_1_weeks'] = df.groupby(['sku_id','store_id'], observed=False)[col].shift(1)
+    return df
 # 聚合特征
 # def week_total_units_sold_feature(df: pd.DataFrame) -> pd.DataFrame:
 #     df = df.copy()
