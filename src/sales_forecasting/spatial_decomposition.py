@@ -156,6 +156,7 @@ def encoding_gap_since_lag_record(df: pd.DataFrame, lag_weeks: list) -> pd.DataF
     df = df.sort_values(by=['sku_id','store_id','week'])
     for lag in lag_weeks:
         df[f'gap_since_lag_{lag}_records'] = df.groupby(['sku_id','store_id'], observed=False)['week'].diff(lag).dt.days.fillna(0) / 7
+        print(f"Encoded gap_since_lag_{lag}_records")
     return df
 
 def encoding_lag_features(df: pd.DataFrame, lag_weeks: list) -> pd.DataFrame:
@@ -226,14 +227,19 @@ def encoding_target_changing_rate_per_gap(
     df = df.copy()
     df = encoding_target_changing_rate(df, periods=periods)
     for k in periods:
+        eliminate_warning = False
         gap_col = gap_col_template.format(k=k)
         if gap_col not in df.columns:
-            raise ValueError(f'Missing gap column: {gap_col}')
+            df = encoding_gap_since_lag_record(df, lag_weeks=[k])
+            print("Warning: gap column not found, created temporarily.")
+            eliminate_warning = True
 
         df[f'target_changing_rate_per_week_{k}'] = (
             df[f'target_changing_rate_{k}_records'] /
             (df[gap_col] + eps)
         )
+        if eliminate_warning:
+            df.drop(columns=[f'gap_since_lag_{k}_records'], inplace=True)
     df.drop(columns=[f'target_changing_rate_{k}_records' for k in periods], inplace=True)
     return df
 

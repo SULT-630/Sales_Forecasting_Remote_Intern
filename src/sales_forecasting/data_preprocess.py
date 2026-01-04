@@ -44,12 +44,12 @@ def preprocess_data(df: pd.DataFrame, target_col: str, id_col: str = "record_ID"
     # 看一下是在哪里进行的排序的
     # df = encoding_sin_cos_week_from_start(df, start_date=pd.Timestamp("2001-01-13"))
 
-    # df = encoding_gap_since_lag_record(df, lag_weeks=[1,2,4])
-    # df = encoding_lag_features(df, lag_weeks=[1,2,4]) 
-    # df = rolling_mean_std_features(df, window_sizes=[2,3,4]) 
-    # df = encoding_EWMA_features(df, spans=[2,3,4]) 
-    # df = encoding_target_changing_rate(df, periods=[1,2,4]) 
-    # df = encoding_target_changing_rate_per_gap(df, periods=[1,2,4]) 
+    # df = encoding_gap_since_lag_record(df, lag_weeks=[1])
+    # df = encoding_lag_features(df, lag_weeks=[4]) 
+    # # df = rolling_mean_std_features(df, window_sizes=[2,3,4]) 
+    # df = encoding_EWMA_features(df, spans=[4]) 
+    # # df = encoding_target_changing_rate(df, periods=[1,2,4]) 
+    # df = encoding_target_changing_rate_per_gap(df, periods=[1,2]) 
 
     # df = week_total_units_sold_feature(df) 
     # df = store_total_units_sold_feature(df) 
