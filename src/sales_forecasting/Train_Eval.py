@@ -104,7 +104,7 @@ class ModelRunner:
         X["log_sales"] = y_train.values
         df = X.sort_values(by=['week'])#.reset_index(drop=True)
         unique_weeks = df['week'].drop_duplicates().sort_values()
-        valid_weeks = unique_weeks.iloc[-2:]
+        valid_weeks = unique_weeks.iloc[-3:]
 
         is_valid = df['week'].isin(valid_weeks)
         df_valid = df[is_valid]
