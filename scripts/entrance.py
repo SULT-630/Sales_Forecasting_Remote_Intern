@@ -7,6 +7,7 @@ Run: python scripts/entrance.py
 import pandas as pd
 import numpy as np
 from xgboost import XGBRegressor
+from lightgbm import LGBMRegressor
 from sales_forecasting.experiment import Experiment
 from sales_forecasting.spatial_decomposition import df_after_missing_value_handling
 from sales_forecasting.data_preprocess import preprocess_data
@@ -52,10 +53,24 @@ model = XGBRegressor(
     enable_categorical=True
 )
 
+LGBmodel = LGBMRegressor(
+    objective='regression',
+    n_estimators=final_n_estimators,
+    learning_rate=0.05,
+    max_depth=6,
+    min_child_weight=10,
+    subsample=0.8,
+    colsample_bytree=0.8,
+    reg_alpha=1.0,
+    reg_lambda=12,
+    random_state=42,
+    n_jobs=-1,
+)
+
 exp = Experiment(
     df=my_dataframe,
     target_col="log_sales",
-    model=model,
+    model=LGBmodel,
     task_type="regression",
     Title = None
 )
@@ -72,4 +87,4 @@ X_train.drop(columns=['discount_ratio'], errors='ignore', inplace=True)
 # X_test.drop(columns=['base_price'], errors='ignore', inplace=True)
 # X_train.drop(columns=['base_price'], errors='ignore', inplace=True)
 # exp.run(X_train, X_test, y_train, y_test, X_train_false, y_train_false, Title = "XGB_log_sales",transform_type='log1p') #真实的rolling predict
-exp.run(X_train, X_test, y_train, y_test, Title = "XGB_log_sales_best",transform_type='log1p')
+exp.run(X_train, X_test, y_train, y_test, Title = "LGB_TEST",transform_type='log1p',model_name='LGB') # 直接预测最后一周

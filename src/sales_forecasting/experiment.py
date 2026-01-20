@@ -21,15 +21,17 @@ class Experiment:
         self.task_type = task_type
         self.Title = Title
 
-    def run(self, X_train, X_test, y_train, y_test, Title,transform_type=None):
+    def run(self, X_train, X_test, y_train, y_test, Title,transform_type=None, model_name=None):
         # processor = DataProcessor(self.target_col)
         # X_train, X_test, y_train, y_test = processor.split(self.df)
 
-        runner = ModelRunner(self.model)
+        runner = ModelRunner(self.model,model_name=model_name)
+        # same for XGB and LGBM
         X_train_new, y_train_new, X_valid, y_valid = runner.train(X_train, y_train)
         X_train_new_no_week = X_train_new.drop(columns=["week"], errors="ignore")
         X_valid_no_week = X_valid.drop(columns=["week"], errors="ignore")
         # y_pred, full_df = runner.rolling_predict(X_train,X_test, y_train)
+        # same for XGB and LGBM
         y_pred, y_prob = runner.predict(X_test)
         y_pred_train, y_prob_train = runner.predict(X_train_new_no_week)
         Compare = runner.build_dataframe(X_test, y_test, y_pred, Title)
@@ -37,7 +39,7 @@ class Experiment:
         evaluator = Evaluator(self.task_type)
         feature_names = X_test.columns
         feature_names = feature_names.drop("week", errors="ignore")
-        fi = evaluator.get_xgb_feature_importance(self.model, feature_names, Title)
+        fi = evaluator.get_feature_importance(self.model, feature_names, Title, model_name=model_name)
         metrics = evaluator.evaluate(y_test, y_pred, Title, transform_type)
         
         mape_week_sku, mape_by_week, overall_mape = MAPE(

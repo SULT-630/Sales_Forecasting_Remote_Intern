@@ -7,6 +7,7 @@ Run: python src/sales_forecasting/Train_Eval.py
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import lightgbm as lgb
 from pathlib import Path
 from sklearn.model_selection import train_test_split
 from sales_forecasting.data_preprocess import preprocess_data
@@ -19,8 +20,8 @@ from sklearn.metrics import (
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-FIG_DIR = PROJECT_ROOT / "artifacts" / "figures" / "Model_evaluation_lastweek"
-METRIC_DIR = PROJECT_ROOT / "artifacts" / "metrics" / "Model_evaluation_lastweek"
+FIG_DIR = PROJECT_ROOT / "artifacts" / "figures" / "Model_evaluation_lastweek_LGB"
+METRIC_DIR = PROJECT_ROOT / "artifacts" / "metrics" / "Model_evaluation_lastweek_LGB"
 FIG_DIR.mkdir(parents=True, exist_ok=True)
 METRIC_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -95,9 +96,10 @@ class DataProcessor:
 
     
 class ModelRunner:
-    def __init__(self, model, best_n=None):
+    def __init__(self, model, best_n=None, model_name=None):
         self.model = model
         self.best_n = best_n
+        self.model_name = model_name
 
     def train(self, X_train, y_train):
         X=X_train.copy()
@@ -123,10 +125,18 @@ class ModelRunner:
         print(X_train_new.head())
         print("--- Training target: ---")
         print(y_train_new.head())
-        self.model.fit(X_train_new_no_week, y_train_new,eval_set=[(X_valid_no_week, y_valid)], verbose=100)
+        if self.model_name == "XGB":
+            self.model.fit(X_train_new_no_week, y_train_new,eval_set=[(X_valid_no_week, y_valid)], verbose=100)
+        elif self.model_name == "LGB":
+            self.model.fit(X_train_new_no_week, y_train_new,eval_set=[(X_valid_no_week, y_valid)], callbacks=[lgb.log_evaluation(period=100)])
+
         print("--- Finding best iteration: ---")
-        print("Best iteration:", self.model.best_iteration)
-        self.best_n = self.model.best_iteration+1
+        if self.model_name == "XGB":
+            print("Best iteration:", self.model.best_iteration)
+            self.best_n = self.model.best_iteration+1
+        elif self.model_name == "LGBM":
+            print("Best iteration:", self.model.best_iteration_)
+            self.best_n = self.model.best_iteration_+1
         
         return X_train_new, y_train_new, X_valid, y_valid
 
@@ -420,27 +430,44 @@ class Evaluator:
         print(metrics)
 
         return metrics
-    def get_xgb_feature_importance(self, model, feature_names, Title, importance_type="gain"):
+    def get_feature_importance(self, model, feature_names, Title, importance_type="gain", model_name=None):
         """
         importance_type:
             - 'gain'   : 分裂带来的平均增益（最常用、最有意义）
             - 'weight' : 特征被用来分裂的次数
             - 'cover'  : 覆盖的样本数
         """
-        booster = model.get_booster()
-        score = booster.get_score(importance_type=importance_type)
+        if model_name == "XGB":
+            booster = model.get_booster()
+            score = booster.get_score(importance_type=importance_type)
 
-        fi = (
-            pd.DataFrame(
-                score.items(),
-                columns=["feature", "importance"]
+            fi = (
+                pd.DataFrame(
+                    score.items(),
+                    columns=["feature", "importance"]
+                )
+                .assign(feature=lambda df: df["feature"].map(
+                    dict(zip(booster.feature_names, feature_names))
+                ))
+                .sort_values("importance", ascending=False)
+                .reset_index(drop=True)
             )
-            .assign(feature=lambda df: df["feature"].map(
-                dict(zip(booster.feature_names, feature_names))
-            ))
-            .sort_values("importance", ascending=False)
-            .reset_index(drop=True)
-        )
+
+        elif model_name == "LGB":
+            booster = model.booster_
+            lgb_importance = booster.feature_importance(importance_type=importance_type)
+            internal_feature_names = feature_names
+
+            fi = (
+                pd.DataFrame({"feature": internal_feature_names, "importance": lgb_importance})
+                .assign(feature=lambda df: df["feature"].map(dict(zip(internal_feature_names, feature_names))))
+                .sort_values("importance", ascending=False)
+                .reset_index(drop=True)
+            )
+        
+        else:
+            raise ValueError(f"Unsupported model_name: {model_name}")
+
         clear_raw_csvs(METRIC_DIR, patterns=[f"{Title}_Feature_Importance.csv"])
         path = METRIC_DIR / f"{Title}_Feature_Importance.csv"
         fi.to_csv(path, index=True)
