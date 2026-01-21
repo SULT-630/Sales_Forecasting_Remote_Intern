@@ -11,7 +11,7 @@ from lightgbm import LGBMRegressor
 from sales_forecasting.experiment import Experiment
 from sales_forecasting.spatial_decomposition import df_after_missing_value_handling
 from sales_forecasting.data_preprocess import preprocess_data
-from sales_forecasting.Train_Eval import DataProcessor
+from sales_forecasting.Train_Eval import MAPE, DataProcessor
 test_path = "data/raw/test_nfcJ3J5.csv"
 target_col = "unit_solds"
 
@@ -116,4 +116,41 @@ X_train_XGB.drop(columns=['discount_ratio'], errors='ignore', inplace=True)
 # X_test.drop(columns=['base_price'], errors='ignore', inplace=True)
 # X_train.drop(columns=['base_price'], errors='ignore', inplace=True)
 # exp.run(X_train, X_test, y_train, y_test, X_train_false, y_train_false, Title = "XGB_log_sales",transform_type='log1p') #真实的rolling predict
-exp_LGBM.run(X_train_LGBM, X_test_LGBM, y_train_LGBM, y_test_LGBM, Title = "LGB_TEST",transform_type='log1p',model_name='LGB') # 直接预测最后一周
+res_LGBM = exp_LGBM.run(X_train_LGBM, X_test_LGBM, y_train_LGBM, y_test_LGBM, Title = "LGB_TEST",transform_type='log1p',model_name='LGB') # 直接预测最后一周
+res_XGB = exp_XGB.run(X_train_XGB, X_test_XGB, y_train_XGB, y_test_XGB, Title = "XGB_TEST",transform_type='log1p',model_name='XGB') # 直接预测最后一周
+
+y_valid = res_XGB["y_valid"].values if hasattr(res_XGB["y_valid"], "values") else res_XGB["y_valid"]
+pred_xgb_valid = res_XGB["y_pred_valid"]
+pred_lgb_valid = res_LGBM["y_pred_valid"]
+
+weights = np.linspace(0, 1, 101)
+best_w, best_mape = None, 1e18
+eps = 1e-9
+
+for w in weights:
+    pred = w * pred_xgb_valid + (1 - w) * pred_lgb_valid
+    mape = np.mean(np.abs((y_valid - pred) / (np.abs(y_valid) + eps))) * 100
+    if mape < best_mape:
+        best_mape = mape
+        best_w = w
+print("--- Ensemble on validation set: ---")
+print("Best w (XGB):", best_w, "Valid MAPE:", best_mape)
+
+pred_xgb_test = res_XGB["y_pred"]
+pred_lgb_test = res_LGBM["y_pred"]
+
+pred_ens_test = best_w * pred_xgb_test + (1 - best_w) * pred_lgb_test
+
+Compare_test = res_XGB["compare_test"].copy()   # y_true, week, sku_id 都在里面
+Compare_test["Y_pred"] = pred_ens_test
+
+mape_week_sku, mape_by_week, overall_mape = MAPE(
+    df=Compare_test,
+    week_col="week",
+    Title="ENS_test",
+    sku_col="sku_id",
+    y_true_col="Y_true",
+    y_pred_col="Y_pred",
+)
+
+print("Ensemble Overall MAPE:", overall_mape)

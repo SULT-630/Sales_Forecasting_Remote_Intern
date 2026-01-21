@@ -103,7 +103,11 @@ class Experiment:
         return {
             "metrics": metrics,
             "y_pred": y_pred,
-            "y_prob": y_prob
+            "y_prob": y_prob,
+            "y_valid": y_valid,
+            "y_pred_valid": y_pred_valid,
+            "compare_valid": Compare_valid,
+            "compare_test": Compare
         }
 
     # def run_kfold(self, Title, transform_type=None, n_splits=5, shuffle=True, random_state=42):
