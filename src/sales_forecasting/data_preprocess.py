@@ -28,7 +28,7 @@ from sales_forecasting.spatial_decomposition import store_week_total_units_sold_
 # from sales_forecasting.spatial_decomposition import sku_total_units_sold_feature
 
 
-def preprocess_data(df: pd.DataFrame, target_col: str, id_col: str = "record_ID") -> pd.DataFrame:
+def preprocess_data(df: pd.DataFrame, target_col: str, id_col: str = "record_ID", model_name: str = "default") -> pd.DataFrame:
     """
     Preprocess the input dataframe by various methods
     New features: log_sales
@@ -40,8 +40,12 @@ def preprocess_data(df: pd.DataFrame, target_col: str, id_col: str = "record_ID"
         df = df.drop(columns=[target_col], errors='ignore')
     df = encoding_year_month_quarter(df)
     df = encoding_week_of_year(df)
-    df = encoding_is_month_start_end(df)
-    df = encoding_is_quarter_start_end(df)
+    if model_name == "LGBM":
+        pass
+    elif model_name == "XGB": 
+        df = encoding_is_month_start_end(df)
+        df = encoding_is_quarter_start_end(df)
+
     df = encoding_sin_cos_week_of_year(df)
     df = encoding_sin_cos_month(df)
     # 看一下是在哪里进行的排序的

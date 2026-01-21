@@ -128,13 +128,14 @@ class ModelRunner:
         if self.model_name == "XGB":
             self.model.fit(X_train_new_no_week, y_train_new,eval_set=[(X_valid_no_week, y_valid)], verbose=100)
         elif self.model_name == "LGB":
-            self.model.fit(X_train_new_no_week, y_train_new,eval_set=[(X_valid_no_week, y_valid)], callbacks=[lgb.log_evaluation(period=100)])
+            self.model.fit(X_train_new_no_week, y_train_new,eval_set=[(X_valid_no_week, y_valid)], callbacks=[
+        lgb.early_stopping(stopping_rounds=200, verbose=False)])
 
         print("--- Finding best iteration: ---")
         if self.model_name == "XGB":
             print("Best iteration:", self.model.best_iteration)
             self.best_n = self.model.best_iteration+1
-        elif self.model_name == "LGBM":
+        elif self.model_name == "LGB":
             print("Best iteration:", self.model.best_iteration_)
             self.best_n = self.model.best_iteration_+1
         

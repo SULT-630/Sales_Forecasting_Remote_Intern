@@ -19,7 +19,8 @@ my_dataframe = df_after_missing_value_handling.copy()
 df_after_log = df_after_missing_value_handling.copy()
 df_after_log['log_sales'] = np.log1p(df_after_log['units_sold'])
 df_after_log = df_after_log.drop(columns=['units_sold'], errors='ignore')
-my_dataframe = preprocess_data(my_dataframe, target_col='units_sold', id_col='record_ID') 
+my_dataframe_XGB = preprocess_data(my_dataframe, target_col='units_sold', id_col='record_ID',model_name='XGB') 
+my_dataframe_LGBM = preprocess_data(my_dataframe, target_col='units_sold', id_col='record_ID',model_name='LGBM') 
 print("--- Dataframe loaded for experiment: ---")
 print(my_dataframe.head(5))
 print("--- Checking multiple lines for same (store_id, sku_id, week): ---")
@@ -32,7 +33,8 @@ processor = DataProcessor(
     time_col='week', 
     test_size=0.2)
 
-X_train, X_test, y_train, y_test = processor.split_lastweek(my_dataframe) # 训练的时候用这个
+X_train_LGBM, X_test_LGBM, y_train_LGBM, y_test_LGBM = processor.split_lastweek(my_dataframe_LGBM) # 训练的时候用这个
+X_train_XGB, X_test_XGB, y_train_XGB, y_test_XGB = processor.split_lastweek(my_dataframe_XGB)
 
 final_n_estimators = 1350
 model = XGBRegressor(
@@ -54,30 +56,57 @@ model = XGBRegressor(
 )
 
 LGBmodel = LGBMRegressor(
-    objective='regression',
-    n_estimators=final_n_estimators,
-    learning_rate=0.05,
-    max_depth=6,
-    min_child_weight=10,
-    subsample=0.8,
-    colsample_bytree=0.8,
-    reg_alpha=1.0,
-    reg_lambda=12,
+    objective="regression",
+    
+    # ===== 学习过程 =====
+    learning_rate=0.04,
+    n_estimators=3250,              # 配合 early stopping 用
+    
+    # ===== 树结构（最关键）=====
+    num_leaves=31,                  # ⭐ 核心参数
+    max_depth=6,                    # 与 num_leaves 配合
+    min_child_samples=50,           # ⭐ 防止 leaf-wise 过拟合
+    min_split_gain=0,
+    
+    # ===== 采样（稳健性）=====
+    feature_fraction=0.7,           # 列采样
+    bagging_fraction=0.8,           # 行采样
+    bagging_freq=1,                 # 不为 0 才会启用 bagging
+    
+    # ===== 正则化 =====
+    reg_alpha=0.0,                  # L1
+    reg_lambda=10.0,                # L2（先偏保守）
+    
+    # ===== 其他 =====
     random_state=42,
     n_jobs=-1,
+    verbosity=-1
 )
 
-exp = Experiment(
-    df=my_dataframe,
+
+exp_LGBM = Experiment(
+    df=my_dataframe_LGBM,
     target_col="log_sales",
     model=LGBmodel,
     task_type="regression",
     Title = None
 )
 
+exp_XGB = Experiment(
+    df=my_dataframe_XGB,
+    target_col="log_sales",
+    model=model,
+    task_type="regression",
+    Title = None
+)
+
+
 # 去除discount ratio的测试
-X_test.drop(columns=['discount_ratio'], errors='ignore', inplace=True)
-X_train.drop(columns=['discount_ratio'], errors='ignore', inplace=True)
+X_test_LGBM.drop(columns=['discount_ratio'], errors='ignore', inplace=True)
+X_train_LGBM.drop(columns=['discount_ratio'], errors='ignore', inplace=True)
+
+X_test_XGB.drop(columns=['discount_ratio'], errors='ignore', inplace=True)
+X_train_XGB.drop(columns=['discount_ratio'], errors='ignore', inplace=True)
 
 # 去除is discount的测试
 # X_test.drop(columns=['is_discount_sku'], errors='ignore', inplace=True)
@@ -87,4 +116,4 @@ X_train.drop(columns=['discount_ratio'], errors='ignore', inplace=True)
 # X_test.drop(columns=['base_price'], errors='ignore', inplace=True)
 # X_train.drop(columns=['base_price'], errors='ignore', inplace=True)
 # exp.run(X_train, X_test, y_train, y_test, X_train_false, y_train_false, Title = "XGB_log_sales",transform_type='log1p') #真实的rolling predict
-exp.run(X_train, X_test, y_train, y_test, Title = "LGB_TEST",transform_type='log1p',model_name='LGB') # 直接预测最后一周
+exp_LGBM.run(X_train_LGBM, X_test_LGBM, y_train_LGBM, y_test_LGBM, Title = "LGB_TEST",transform_type='log1p',model_name='LGB') # 直接预测最后一周
