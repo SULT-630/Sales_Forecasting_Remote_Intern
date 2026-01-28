@@ -11,6 +11,7 @@ from sales_forecasting.Train_Eval import Evaluator
 from sales_forecasting.Train_Eval import MAPE
 from sales_forecasting.Train_Eval import Visualizer
 from sales_forecasting.Train_Eval import DataProcessor
+from sales_forecasting.Train_Eval import ModelExplainer
 from sklearn.model_selection import KFold
 
 class Experiment:
@@ -99,6 +100,25 @@ class Experiment:
         else:
             if y_prob is not None:
                 Visualizer.plot_roc(y_test, y_prob, Title)
+
+        # shap explainer
+        explainer = ModelExplainer(self.model, X_test, model_name=model_name)
+        explainer.explain(Title)
+
+        # shap dependence plots for some features
+        top_features = fi['feature'].tolist()[:9]  # top 9 important features
+        for feature in top_features:
+            explainer.plot_dependence(feature, Title)
+
+        # interaction index
+        explainer.plot_dependence("total_price", Title, interaction="is_discount_sku")
+        explainer.plot_dependence("total_price", Title, interaction="is_display_sku")
+        explainer.plot_dependence("total_price", Title, interaction="is_featured_sku")
+        explainer.plot_dependence("ewma_24_records", Title, interaction="total_price")
+        explainer.plot_dependence("ewma_24_records", Title, interaction="is_discount_sku")
+        explainer.plot_dependence("ewma_24_records", Title, interaction="is_display_sku")
+        explainer.plot_dependence("total_price", Title, interaction="total_price_change_ratio")
+        
 
         return {
             "metrics": metrics,

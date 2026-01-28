@@ -21,8 +21,8 @@ from sklearn.metrics import (
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-FIG_DIR = PROJECT_ROOT / "artifacts" / "figures" / "Model_evaluation_lastweek_LGB"
-METRIC_DIR = PROJECT_ROOT / "artifacts" / "metrics" / "Model_evaluation_lastweek_LGB"
+FIG_DIR = PROJECT_ROOT / "artifacts" / "figures"
+METRIC_DIR = PROJECT_ROOT / "artifacts" / "metrics"
 FIG_DIR.mkdir(parents=True, exist_ok=True)
 METRIC_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -569,20 +569,24 @@ class Visualizer:
         print(f"Saved {Title} ROC curve to: {ROC_fig_path}")
 # SHAP explainer
 class ModelExplainer:
-    def __init__(self, model, X_test, model_name=None):
+    def __init__(self, model, X_test, shap_values = None, model_name=None):
         self.model = model
-        self.X_shap = X_test.sample(5000, random_state=42)
+        if "week" in X_test.columns:
+            X_test = X_test.drop(columns=["week"])
+        self.X_shap = X_test
+        self.shap_values = shap_values
         self.model_name = model_name
-    def explain(self, X, Title):
+    def explain(self, Title):
         explainer = shap.TreeExplainer(self.model)
         shap_values = explainer.shap_values(self.X_shap)
+        self.shap_values = shap_values
         expected_values = explainer.expected_value
 
         # 全局重要性 SHAP summary plot dot
         plt.figure()
         shap.summary_plot(shap_values, self.X_shap, show=False)
         SHAP_fig_path = FIG_DIR / "SHAP_explainer" / f"{Title}_SHAP_summary_dot.png"
-        SHAP_fig_path.mkdir(parents=True, exist_ok=True)
+        SHAP_fig_path.parent.mkdir(parents=True, exist_ok=True)
         clear_raw_csvs(SHAP_fig_path, patterns=[f"{Title}_SHAP_summary_dot.png"])
         plt.savefig(SHAP_fig_path, dpi=150, bbox_inches="tight")
         plt.close()
@@ -592,7 +596,7 @@ class ModelExplainer:
         plt.figure()
         shap.summary_plot(shap_values, self.X_shap, plot_type="bar", show=False)
         SHAP_fig_path = FIG_DIR / "SHAP_explainer" / f"{Title}_SHAP_summary_bar.png"
-        SHAP_fig_path.mkdir(parents=True, exist_ok=True)
+        SHAP_fig_path.parent.mkdir(parents=True, exist_ok=True)
         clear_raw_csvs(SHAP_fig_path, patterns=[f"{Title}_SHAP_summary_bar.png"])
         plt.savefig(SHAP_fig_path, dpi=150, bbox_inches="tight")
         plt.close()
@@ -611,3 +615,28 @@ class ModelExplainer:
         SHAP_imp_path = METRIC_DIR / f"{Title}_SHAP_Importance.csv"
         shap_importance.to_csv(SHAP_imp_path, index=True)
         print(f"\nSaved {Title} SHAP importance to: {SHAP_imp_path}")
+
+    # SHAP dependence plots for some features
+    def plot_dependence(self, feature_name: str, Title: str, interaction = None):
+        plt.figure()
+        shap.dependence_plot(
+            feature_name,
+            self.shap_values,
+            self.X_shap,
+            interaction_index=interaction,
+            show=False
+        )
+        plt.title(f"SHAP Dependence: {feature_name}")
+        if interaction:
+            SHAP_fig_path = FIG_DIR / "SHAP_explainer" / f"{Title}_SHAP_dependence_{feature_name}_interaction_{interaction}.png"
+        else:
+            SHAP_fig_path = FIG_DIR / "SHAP_explainer" / f"{Title}_SHAP_dependence_{feature_name}.png"
+        SHAP_fig_path.parent.mkdir(parents=True, exist_ok=True)
+        if interaction:
+            clear_raw_csvs(SHAP_fig_path, patterns=[f"{Title}_SHAP_dependence_{feature_name}_interaction_{interaction}.png"])
+        else:
+            clear_raw_csvs(SHAP_fig_path, patterns=[f"{Title}_SHAP_dependence_{feature_name}.png"])
+        plt.savefig(SHAP_fig_path, dpi=150, bbox_inches="tight")
+        plt.close()
+        print(f"Saved {Title} SHAP dependence plot for {feature_name} to: {SHAP_fig_path}")
+    
