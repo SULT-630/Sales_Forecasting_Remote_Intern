@@ -8,6 +8,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import lightgbm as lgb
+import shap
 from pathlib import Path
 from sklearn.model_selection import train_test_split
 from sales_forecasting.data_preprocess import preprocess_data
@@ -566,3 +567,47 @@ class Visualizer:
         plt.savefig(ROC_fig_path, dpi=150, bbox_inches="tight")
         plt.close()
         print(f"Saved {Title} ROC curve to: {ROC_fig_path}")
+# SHAP explainer
+class ModelExplainer:
+    def __init__(self, model, X_test, model_name=None):
+        self.model = model
+        self.X_shap = X_test.sample(5000, random_state=42)
+        self.model_name = model_name
+    def explain(self, X, Title):
+        explainer = shap.TreeExplainer(self.model)
+        shap_values = explainer.shap_values(self.X_shap)
+        expected_values = explainer.expected_value
+
+        # 全局重要性 SHAP summary plot dot
+        plt.figure()
+        shap.summary_plot(shap_values, self.X_shap, show=False)
+        SHAP_fig_path = FIG_DIR / "SHAP_explainer" / f"{Title}_SHAP_summary_dot.png"
+        SHAP_fig_path.mkdir(parents=True, exist_ok=True)
+        clear_raw_csvs(SHAP_fig_path, patterns=[f"{Title}_SHAP_summary_dot.png"])
+        plt.savefig(SHAP_fig_path, dpi=150, bbox_inches="tight")
+        plt.close()
+        print(f"Saved {Title} SHAP summary plot dot to: {SHAP_fig_path}")
+
+        # SHAP bar
+        plt.figure()
+        shap.summary_plot(shap_values, self.X_shap, plot_type="bar", show=False)
+        SHAP_fig_path = FIG_DIR / "SHAP_explainer" / f"{Title}_SHAP_summary_bar.png"
+        SHAP_fig_path.mkdir(parents=True, exist_ok=True)
+        clear_raw_csvs(SHAP_fig_path, patterns=[f"{Title}_SHAP_summary_bar.png"])
+        plt.savefig(SHAP_fig_path, dpi=150, bbox_inches="tight")
+        plt.close()
+        print(f"Saved {Title} SHAP summary plot bar to: {SHAP_fig_path}")
+
+        # Feature importance from SHAP values 全局排名表
+        feature_names = self.X_shap.columns
+        mean_abs_shap = np.abs(shap_values).mean(axis=0)
+        shap_importance = (
+            pd.DataFrame({"feature": feature_names, "mean_abs_shap": mean_abs_shap})
+            .sort_values("mean_abs_shap", ascending=False)
+            .reset_index(drop=True)
+        )
+        print(shap_importance.head(20) )
+        clear_raw_csvs(METRIC_DIR, patterns=[f"{Title}_SHAP_Importance.csv"])
+        SHAP_imp_path = METRIC_DIR / f"{Title}_SHAP_Importance.csv"
+        shap_importance.to_csv(SHAP_imp_path, index=True)
+        print(f"\nSaved {Title} SHAP importance to: {SHAP_imp_path}")
