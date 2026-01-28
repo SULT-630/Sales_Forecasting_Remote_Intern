@@ -60,7 +60,7 @@ LGBmodel = LGBMRegressor(
     
     # ===== 学习过程 =====
     learning_rate=0.04,
-    n_estimators=3250,              # 配合 early stopping 用
+    n_estimators=3250,              # 调整一下不超过1000
     
     # ===== 树结构（最关键）=====
     num_leaves=31,                  # ⭐ 核心参数
