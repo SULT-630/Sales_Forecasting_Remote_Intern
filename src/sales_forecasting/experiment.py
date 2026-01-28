@@ -118,7 +118,9 @@ class Experiment:
         explainer.plot_dependence("ewma_24_records", Title, interaction="is_discount_sku")
         explainer.plot_dependence("ewma_24_records", Title, interaction="is_display_sku")
         explainer.plot_dependence("total_price", Title, interaction="total_price_change_ratio")
-        
+
+
+        explainer.error_analysis(Compare, "Y_true", "Y_pred", Title)
 
         return {
             "metrics": metrics,

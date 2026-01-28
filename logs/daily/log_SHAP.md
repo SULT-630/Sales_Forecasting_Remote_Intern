@@ -36,7 +36,12 @@
     - ewma & is discount：分层也不明显
     - ewma & is display：同上
     - total price & total change ratio：高价区涨价的销量惩罚更严重
-
+- 误差分布分析：
+    - residual error分布：中心接近0，基本对称，不存在明显的系统性高估或者低估
+    - abs error：根据95分虚线，绝大多数样本误差在较小区间，虽然高误差的样本不多但是尾部很长，存在极大误差点，集中在少数极端情形
+    - 高误差样本：在waterfall列出的几个样本中，共性在于，ewma是最大的负向驱动，问题在于如果真实销量突变会有问题，store id和sku id也是比较大的驱动，而且方向不固定，因为模型可能在依赖对于不同store，sku的平均销量或者模式的记忆
+    - 高误差ratio：高误差样本的驱动特征前12名分别为：target changing rate, sku_id, cos_week_of_year, quarter, gap1, is_discount, sin_month, store_id, ewma_24,total_price, cos_month, total_price_change_ratio；说明高误差样本集中出现在促销状态变化，周期性节点（节假日），销量变化较快的时期（冷启动？）；模型对比：XGB更容易在促销/变化率驱动下出错，LGBM更容易在趋势不一致的时候出错
+- 在2个sku_id处，预测误差很大，545621，300291，可能是极少样本带来的，历史窗口有效样本极少
 ## Issues Encountered
 - xxx
 

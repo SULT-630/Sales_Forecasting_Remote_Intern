@@ -569,18 +569,20 @@ class Visualizer:
         print(f"Saved {Title} ROC curve to: {ROC_fig_path}")
 # SHAP explainer
 class ModelExplainer:
-    def __init__(self, model, X_test, shap_values = None, model_name=None):
+    def __init__(self, model, X_test, shap_values = None, expected_value=None, model_name=None):
         self.model = model
         if "week" in X_test.columns:
             X_test = X_test.drop(columns=["week"])
         self.X_shap = X_test
         self.shap_values = shap_values
+        self.expected_value = expected_value
         self.model_name = model_name
     def explain(self, Title):
         explainer = shap.TreeExplainer(self.model)
         shap_values = explainer.shap_values(self.X_shap)
         self.shap_values = shap_values
         expected_values = explainer.expected_value
+        self.expected_value = expected_values
 
         # 全局重要性 SHAP summary plot dot
         plt.figure()
@@ -639,4 +641,233 @@ class ModelExplainer:
         plt.savefig(SHAP_fig_path, dpi=150, bbox_inches="tight")
         plt.close()
         print(f"Saved {Title} SHAP dependence plot for {feature_name} to: {SHAP_fig_path}")
-    
+    def error_analysis(self, df: pd.DataFrame, y_true_col: str, y_pred_col: str, Title: str):
+        if y_true_col not in df.columns or y_pred_col not in df.columns:
+            raise ValueError(f"df must contain columns: {y_true_col}, {y_pred_col}")
+        df = df.copy()
+        y_true_log = df[y_true_col].to_numpy()
+        y_pred_log = df[y_pred_col].to_numpy()
+
+        n = len(df)
+        if len(self.X_shap) != n:
+            raise ValueError(f"Length mismatch: df has {n} rows, but X_shap has {len(self.X_shap)} rows.")
+        if self.shap_values.shape[0] != n:
+            raise ValueError(f"Length mismatch: df has {n} rows, but shap_values has {self.shap_values.shape[0]} rows.")
+        
+        residual = y_pred_log - y_true_log
+        abs_residual = np.abs(residual)
+
+        error_quantile = 95
+        threshold = np.percentile(abs_residual, error_quantile)
+        high_error_mask = abs_residual >= threshold
+        high_error_idx = np.where(high_error_mask)[0]
+
+        over_mask = high_error_mask & (residual > 0)   # 高估
+        under_mask = high_error_mask & (residual < 0)  # 低估
+
+        print("====== High-error sample analysis (log1p space) ======")
+        print(f"Title: {Title}")
+        print(f"Total samples: {n}")
+        print(f"High-error threshold (top {100-error_quantile}%): {threshold:.4f}")
+        print(f"High-error samples: {high_error_mask.sum()} ({high_error_mask.mean()*100:.2f}%)")
+        print(f"  Overestimation: {over_mask.sum()}")
+        print(f"  Underestimation: {under_mask.sum()}")
+        print(f"Mean abs error (all):  {abs_residual.mean():.4f}")
+        print(f"Mean abs error (high): {abs_residual[high_error_mask].mean():.4f}")
+
+        # ---------- 3) 可视化：误差分布 + residual hist ----------
+        plt.figure()
+        plt.hist(residual, bins=60)
+        plt.axvline(0, linestyle="--")
+        plt.title(f"{Title} Residual Distribution (log space)")
+        plt.xlabel("residual = y_pred_log - y_true_log")
+        plt.ylabel("count")
+        plt.tight_layout()
+        hist_fig_path = FIG_DIR / "SHAP_explainer" / f"{Title}_SHAP_error_analysis_hist.png"
+        hist_fig_path.parent.mkdir(parents=True, exist_ok=True)
+        clear_raw_csvs(hist_fig_path, patterns=[f"{Title}_SHAP_error_analysis_hist.png"])
+        plt.savefig(hist_fig_path, dpi=150, bbox_inches="tight")
+        plt.close()
+        print(f"Saved {Title} SHAP error analysis hist to: {hist_fig_path}")
+
+        plt.figure()
+        plt.hist(abs_residual, bins=60)
+        plt.axvline(threshold, linestyle="--")
+        plt.title(f"{Title} Absolute Error Distribution (log space)")
+        plt.xlabel("|residual|")
+        plt.ylabel("count")
+        plt.tight_layout()
+        hist_fig_path = FIG_DIR / "SHAP_explainer" / f"{Title}_SHAP_abs_error_analysis_hist.png"
+        hist_fig_path.parent.mkdir(parents=True, exist_ok=True)
+        clear_raw_csvs(hist_fig_path, patterns=[f"{Title}_SHAP_abs_error_analysis_hist.png"])
+        plt.savefig(hist_fig_path, dpi=150, bbox_inches="tight")
+        plt.close()
+        print(f"Saved {Title} SHAP abs error analysis hist to: {hist_fig_path}")
+
+        # ---------- 4) 代表性样本选择 ----------
+        # 误差最大的 top_k 个
+        top_k = 5
+        top_error_idx = np.argsort(abs_residual)[-top_k:][::-1]  # 从大到小
+
+        one_over_idx = np.where(over_mask)[0][0] if over_mask.any() else None
+        one_under_idx = np.where(under_mask)[0][0] if under_mask.any() else None
+
+        print("\nTop error indices:", top_error_idx.tolist())
+        if one_over_idx is not None:
+            print("Example overestimation idx:", int(one_over_idx))
+        if one_under_idx is not None:
+            print("Example underestimation idx:", int(one_under_idx))
+
+        # ---------- 5) 单样本局部解释：waterfall ----------
+        def _waterfall(i: int, max_display: int = 15):
+            i = int(i)
+            print("\n--- Waterfall for sample:", i, "---")
+            print(f"y_true_log={y_true_log[i]:.4f}, y_pred_log={y_pred_log[i]:.4f}, residual_log={residual[i]:.4f}")
+            # 如果你也想看原尺度（仅解释用）：
+            # print(f"y_true_raw={np.expm1(y_true_log[i]):.2f}, y_pred_raw={np.expm1(y_pred_log[i]):.2f}")
+
+            exp = shap.Explanation(
+                values=self.shap_values[i],
+                base_values=self.expected_value,
+                data=self.X_shap.iloc[i],
+                feature_names=self.X_shap.columns
+            )
+            shap.plots.waterfall(exp, max_display=max_display, show=False)
+            waterfall_fig_path = FIG_DIR / "SHAP_explainer" / f"{Title}_SHAP_waterfall_{i}.png"
+            waterfall_fig_path.parent.mkdir(parents=True, exist_ok=True)
+            clear_raw_csvs(waterfall_fig_path, patterns=[f"{Title}_SHAP_waterfall_{i}.png"])
+            fig = plt.gcf()
+            fig.savefig(waterfall_fig_path, dpi=150, bbox_inches="tight")
+            plt.close(fig)
+            print(f"Saved {Title} SHAP waterfall to: {waterfall_fig_path}")
+
+        # 画 3 类代表样本：最大误差、一个高估、一个低估（如果存在）
+        _waterfall(top_error_idx[0])
+
+        if one_over_idx is not None and one_over_idx != top_error_idx[0]:
+            _waterfall(one_over_idx)
+
+        if one_under_idx is not None and one_under_idx != top_error_idx[0] and one_under_idx != one_over_idx:
+            _waterfall(one_under_idx)
+
+        # ---------- 6) 高误差样本 vs 全体：特征贡献模式对比（找系统性） ----------
+        mean_abs_shap_all = np.abs(self.shap_values).mean(axis=0)
+        mean_abs_shap_high = np.abs(self.shap_values[high_error_mask]).mean(axis=0)
+
+        shap_compare_df = pd.DataFrame({
+            "feature": self.X_shap.columns,
+            "mean_abs_shap_all": mean_abs_shap_all,
+            "mean_abs_shap_high_error": mean_abs_shap_high,
+            "ratio_high_over_all": mean_abs_shap_high / (mean_abs_shap_all + 1e-12)
+        }).sort_values("ratio_high_over_all", ascending=False)
+
+        print("\n====== Features over-represented in high-error samples ======")
+        print(shap_compare_df.head(15).to_string(index=False))
+
+        # 可视化：ratio_top_features
+        top_m = 12
+        tmp = shap_compare_df.head(top_m).iloc[::-1]  # 反转方便水平条形图从小到大
+        plt.figure(figsize=(8, 5))
+        plt.barh(tmp["feature"], tmp["ratio_high_over_all"])
+        plt.title(f"{Title} High-error vs All: SHAP ratio (top {top_m})")
+        plt.xlabel("mean(|SHAP|) in high-error / mean(|SHAP|) in all")
+        plt.tight_layout()
+        ratio_top_features_fig_path = FIG_DIR / "SHAP_explainer" / f"{Title}_SHAP_ratio_top_features.png"
+        ratio_top_features_fig_path.parent.mkdir(parents=True, exist_ok=True)
+        clear_raw_csvs(ratio_top_features_fig_path, patterns=[f"{Title}_SHAP_ratio_top_features.png"])
+        fig = plt.gcf()
+        fig.savefig(ratio_top_features_fig_path, dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        print(f"Saved {Title} SHAP waterfall to: {ratio_top_features_fig_path}")
+
+        # ---------- 7) 返回一个结构化结果（方便你后续系统性偏差/写报告） ----------
+        result_df = df.copy()
+        result_df["residual_log"] = residual
+        result_df["abs_error_log"] = abs_residual
+        result_df["is_high_error"] = high_error_mask
+        result_df["is_over"] = over_mask
+        result_df["is_under"] = under_mask
+
+        # time_col = "week"  # 或 week_start, week_id
+        # print("week dtype:", result_df[time_col].dtype)
+        # print("week head:", result_df[time_col].head().tolist())
+        # print("week nunique:", result_df[time_col].nunique(), "n:", len(result_df))
+
+
+        # time_residual_df = (
+        #     result_df
+        #     .groupby(time_col)
+        #     .agg(
+        #         mean_residual_log=("residual_log", "mean"),
+        #         mean_abs_error_log=("abs_error_log", "mean"),
+        #         n_samples=("residual_log", "size")
+        #     )
+        #     .reset_index()
+        # )
+
+        # plt.figure(figsize=(10,4))
+        # plt.plot(time_residual_df[time_col], time_residual_df["mean_residual_log"])
+        # plt.axhline(0, linestyle="--")
+        # plt.title(f"{Title} Mean Residual by {time_col} (log space)")
+        # plt.ylabel("mean residual")
+        # plt.xticks(rotation=45)
+        # plt.tight_layout()
+        # residual_time_fig_path = FIG_DIR / "SHAP_explainer" / f"{Title}_SHAP_residual_time.png"
+        # residual_time_fig_path.parent.mkdir(parents=True, exist_ok=True)
+        # clear_raw_csvs(residual_time_fig_path, patterns=[f"{Title}_SHAP_residual_time.png"])
+        # fig = plt.gcf()
+        # fig.savefig(residual_time_fig_path, dpi=150, bbox_inches="tight")
+        # plt.close(fig)
+        # print(f"Saved {Title} SHAP residual time to: {residual_time_fig_path}")
+
+        # plt.figure(figsize=(10,4))
+        # plt.plot(time_residual_df[time_col], time_residual_df["mean_abs_error_log"])
+        # plt.title(f"{Title} Mean Absolute Error by {time_col} (log space)")
+        # plt.ylabel("mean |residual|")
+        # plt.xticks(rotation=45)
+        # plt.tight_layout()
+        # abs_error_fig_path = FIG_DIR / "SHAP_explainer" / f"{Title}_SHAP_abs_error_time.png"
+        # abs_error_fig_path.parent.mkdir(parents=True, exist_ok=True)
+        # clear_raw_csvs(abs_error_fig_path, patterns=[f"{Title}_SHAP_abs_error_time.png"])
+        # fig = plt.gcf()
+        # fig.savefig(abs_error_fig_path, dpi=150, bbox_inches="tight")
+        # plt.close(fig)
+        # print(f"Saved {Title} SHAP abs error time to: {abs_error_fig_path}")
+
+
+        high_error_by_sku = (
+            result_df
+            .groupby("sku_id")
+            .agg(
+                high_error_rate=("is_high_error", "mean"),
+                n_samples=("is_high_error", "size")
+            )
+            .reset_index()
+        )
+
+        plt.figure(figsize=(10,4))
+        plt.plot(high_error_by_sku["sku_id"], high_error_by_sku["high_error_rate"])
+        plt.title(f"{Title} High-error Rate by SKU")
+        plt.ylabel("fraction of high-error samples")
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+
+        error_concentration_fig_path = FIG_DIR / "SHAP_explainer" / f"{Title}_SHAP_error_concentration.png"
+        error_concentration_fig_path.parent.mkdir(parents=True, exist_ok=True)
+        clear_raw_csvs(error_concentration_fig_path, patterns=[f"{Title}_SHAP_error_concentration.png"])
+        fig = plt.gcf()
+        fig.savefig(error_concentration_fig_path, dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        print(f"Saved {Title} SHAP error concentration by sku to: {error_concentration_fig_path}")
+
+
+
+
+
+        return {
+            "threshold": float(threshold),
+            "high_error_idx": high_error_idx,
+            "top_error_idx": top_error_idx,
+            "shap_compare_df": shap_compare_df,
+            "eval_df": result_df
+        }
